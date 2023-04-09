@@ -175,9 +175,9 @@ def get_dist(posfname, kept_preprocessing='all', kept_snp='all', region_len_only
         return None, region_len, snps_on_same_chrom
 
     # Order below is important
-    if not kept_preprocessing is 'all':
+    if kept_preprocessing != 'all':
         ALLPOS = ALLPOS[kept_preprocessing]
-    if not kept_snp is 'all':
+    if kept_snp != 'all':
         ALLPOS = ALLPOS[kept_snp]
     # compute matrix of distance between SNPS (nsnp x nsnp)
     dist = np.abs(ALLPOS[:, None] - ALLPOS)
@@ -246,9 +246,9 @@ def plotLDblock(hcor_snp, left=None, right=None, ref='Real', mirror=False, diff=
         vmin, vmax = 0, 1
 
     if (not mirror) or diff:
-        if not is_fixed is None:
+        if is_fixed is not None:
             REF = hcor_snp[ref][np.ix_(~is_fixed, ~is_fixed)]
-        elif not is_fixed_dic is None:
+        elif is_fixed_dic is not None:
             REF = hcor_snp[ref][np.ix_(~is_fixed_dic[ref], ~is_fixed_dic[ref])]
         else:
             REF = hcor_snp[ref]
@@ -261,9 +261,9 @@ def plotLDblock(hcor_snp, left=None, right=None, ref='Real', mirror=False, diff=
         triREF[np.triu_indices(triREF.shape[0], k=0)] = 0  # keep only lower triangle
 
     for i, (cat, hcor) in enumerate(hcor_snp.items()):
-        if not is_fixed is None:
+        if is_fixed is not None:
             A = hcor[np.ix_(~is_fixed, ~is_fixed)]
-        elif not is_fixed_dic is None:
+        elif is_fixed_dic is not None:
             A = hcor[np.ix_(~is_fixed_dic[cat], ~is_fixed_dic[cat])]
         else:
             A = hcor
@@ -283,8 +283,6 @@ def plotLDblock(hcor_snp, left=None, right=None, ref='Real', mirror=False, diff=
 
 
 def datatransform(dat, to_minor_encoding=False, min_af=0, max_af=1):
-    # min_af, max_af, to_minor_encoding
-    print(to_minor_encoding, min_af, max_af)
     dat = np.array(dat)
     af = np.mean(dat, axis=0)
     if to_minor_encoding:
@@ -377,7 +375,7 @@ def plotPCAallfigs(pcdf, method, orderedCat, output_dir, colpal):
 
 
 def computePCAdist(pcdf, method, output_dir, stat='wasserstein', reg=1e-3):
-    scores_df = pd.DataFrame(columns=['stat', 'statistic', 'pvalue', 'label', 'PC', 'method'])
+    scores_df = pd.DataFrame(columns=['stat', 'statistic', 'label', 'PC', 'method'])
     print(stat)
     for key in pd.unique(pcdf.label):
         if 'coupled_with' in pcdf.columns:
@@ -396,7 +394,7 @@ def computePCAdist(pcdf, method, output_dir, stat='wasserstein', reg=1e-3):
                 continue
             if stat == 'wasserstein':
                 sc = scs.wasserstein_distance(pcdf[reals].iloc[:, pc], pcdf[gen].iloc[:, pc])
-                row_data = {'stat': stat, 'statistic': sc, 'pvalue': None, 'label': key, 'PC': pc + 1, 'method': method}
+                row_data = {'stat': [stat], 'statistic': [sc], 'label': [key], 'PC': [pc + 1], 'method': [method]}
                 scores_df = pd.concat([scores_df, pd.DataFrame(row_data, index=[0])], ignore_index=True)
 
             elif stat == 'wasserstein2D':
@@ -413,9 +411,10 @@ def computePCAdist(pcdf, method, output_dir, stat='wasserstein', reg=1e-3):
                     M /= M.max()
                     sc = ot.sinkhorn2(a, b, M, reg)[0]
                     print(key, sc)
-                    scores_df = scores_df.append(
-                        {'stat': stat, 'statistic': sc, 'reg': reg, 'label': key, 'PC': f'{pc + 1}-{pc + 2}',
-                         'method': method}, ignore_index=True)
+                    new_row = pd.DataFrame(
+                        {'stat': [stat], 'statistic': [sc], 'reg': [reg], 'label': [key], 'PC': [f'{pc + 1}-{pc + 2}'],
+                         'method': [method]})
+                    scores_df = pd.concat([scores_df, new_row], ignore_index=True)
 
             else:
                 print(f'{stat} is not a recognized stat option')
@@ -439,7 +438,7 @@ def plotPrivacyLoss(Train, Test, output_dir, colpal, allcolpal):
         AA_Train = pd.read_csv(os.path.join(output_dir, f'AA{Train}.csv.bz2'))  # AA_Train-Gen
         PL = dict()
         for cat in AA_Train.cat:
-            if not cat in AA_Test.cat.values: continue
+            if cat not in AA_Test.cat.values: continue
             # Privacy Loss = Test AA - Train AA
             PL[cat] = np.float(AA_Test[AA_Test.cat == cat].AATS) - np.float(AA_Train[AA_Train.cat == cat].AATS)
         if len(PL) > 0:
@@ -479,7 +478,7 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
 
     """
 
-    if (not refCateg is None) and (not refCateg in np.unique(samplelabel)):
+    if (refCateg is not None) and (refCateg not in np.unique(samplelabel)):
         print(f'Error: It is mandatory to have individuals labeled as your reference categ {refCateg}',
               ' in your dataset. You can change the reference label using the refCateg argument')
         return
@@ -496,7 +495,7 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
     if (reloadDTT is None) or (not os.path.exists(DTTfilename)):
         dAB = distance.cdist(dat.loc[samplelabel.isin([refCateg]), :],
                              dat.loc[samplelabel.isin([refCateg]), :], 'cityblock')
-        if not reloadDTT is None:
+        if reloadDTT is not None:
             print(f"DTT was not yet saved: we computed it and saved it to {DTTfilename}")
             np.savez_compressed(DTTfilename, DTT=dAB)
     else:
@@ -508,7 +507,7 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
 
     np.fill_diagonal(dAB, np.Inf)
     dTT = dAB.min(axis=1)
-    DTMP = pd.DataFrame({'cat': refCateg, 'dTS': dTT, 'dST': dTT, 'dSS': dTT})
+    DTMP = pd.DataFrame({'cat': [refCateg], 'dTS': [dTT], 'dST': [dTT], 'dSS': [dTT]})
     DIST = pd.concat([DIST, DTMP], ignore_index=True)
 
     for cat in categ:
@@ -542,9 +541,10 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
         AAtruth = ((dTS > dTT) / n).sum()
         AAsyn = ((dST > dSS) / n).sum()
         AATS = (AAtruth + AAsyn) / 2
-        tmp_AA = pd.DataFrame({'cat': cat, 'AATS': AATS, 'AAtruth': AAtruth, 'AAsyn': AAsyn, 'ref': refCateg})
-        AA = pd.concat([AA, tmp_AA], ignore_index=True)
-        DTMP = pd.DataFrame({'cat': cat, 'dTS': dTS, 'dST': dST, 'dSS': dSS})
+        new_row = pd.DataFrame(
+            {'cat': [cat], 'AATS': [AATS], 'AAtruth': [AAtruth], 'AAsyn': [AAsyn], 'ref': [refCateg]})
+        AA = pd.concat([AA, new_row], ignore_index=True)
+        DTMP = pd.DataFrame({'cat': [cat], 'dTS': [dTS], 'dST': [dST], 'dSS': [dSS]})
         DIST = pd.concat([DIST, DTMP], ignore_index=True)
 
     return AA, DIST
