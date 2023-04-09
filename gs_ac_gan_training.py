@@ -3,17 +3,15 @@ import json
 import math
 from pathlib import Path
 
-import tensorflow
 import tensorflow.python.keras.backend as K
 from keras.layers import BatchNormalization
-from tensorflow.python.keras.losses import mse
-from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 from sklearn.decomposition import PCA
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers import Input, Dense, LeakyReLU
+from tensorflow.python.keras.losses import mse
 from tensorflow.python.keras.models import Sequential, Model
 from tensorflow.python.keras.models import save_model
-from tensorflow.python.keras.optimizer_v2.adam import Adam
+from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 from tensorflow.python.keras.utils.np_utils import to_categorical
 
 from utils.consts import *
@@ -136,7 +134,6 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
           generator: Model, discriminator: Model, acgan: Model, save_number: int, class_id_to_counts: dict,
           experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str):
     y_real, y_fake = np.ones([batch_size, 1]), np.zeros([batch_size, 1])
-    # y_real, y_fake = -np.ones([batch_size, 1]), np.ones([batch_size, 1])
     losses = []
     d_loss, g_loss = 0, 0
     # Training iteration
