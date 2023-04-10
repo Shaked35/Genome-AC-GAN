@@ -7,7 +7,6 @@ import tensorflow.python.keras.backend as K
 from keras.layers import BatchNormalization
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers import Input, Dense, LeakyReLU
-from tensorflow.python.keras.losses import mse
 from tensorflow.python.keras.models import Sequential, Model
 from tensorflow.python.keras.models import save_model
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -237,14 +236,13 @@ def calculate_distance_penalty(y_pred, y_real):
     true_class = tensorflow.argmax(y_real)
     fake_class = tensorflow.argmax(y_pred)
     distance_penalty = tensorflow.reduce_mean(
-        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[0] * 2),
+        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[0]),
                         dtype=tensorflow.float32))
     return distance_penalty
 
 
 def wasserstein_class_loss(y_true, y_pred):
     # Convert one-hot encoded y_true to integers
-    m = mse(y_true, y_pred)
     y_true_int = tensorflow.cast(K.argmax(y_true, axis=-1), tensorflow.float32)
 
     # Extract the relevant probabilities from y_pred
