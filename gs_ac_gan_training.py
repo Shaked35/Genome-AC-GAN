@@ -30,7 +30,7 @@ def save_mod(generator: Model, discriminator: Model, acgan: Model, experiment_re
 def build_generator(latent_dim: int, num_classes: int, number_of_genotypes: int, alph: float):
     generator = Sequential()
     generator.add(
-        Dense(int(number_of_genotypes // 1.2), input_shape=(latent_dim + 8 * num_classes,),
+        Dense(int(number_of_genotypes // 1.2), input_shape=(latent_dim + NUMBER_REPEAT_CLASS_VECTOR * num_classes,),
               kernel_regularizer=regularizers.l2(0.0001)))
     generator.add(LeakyReLU(alpha=alph))
     generator.add(Dense(int(number_of_genotypes // 1.1), kernel_regularizer=regularizers.l2(0.0001)))
