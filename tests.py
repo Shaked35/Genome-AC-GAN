@@ -1,9 +1,7 @@
 from unittest import TestCase
 
-import numpy as np
-import tensorflow
-
 from gs_ac_gan_training import f1_score_with_penalty
+from utils.util import *
 
 
 class Test(TestCase):
@@ -62,3 +60,17 @@ class Test(TestCase):
 
         self.assertLess(score1, score2)
         self.assertLess(score3, score4)
+
+
+    def test_load_data(self):
+        real_data = load_real_data(hapt_genotypes_path=REAL_10K_SNP_1000G_PATH,
+                                   extra_data_path=REAL_EXTRA_DATA_PATH)
+        real_data_population = real_data[get_relevant_columns(real_data, 'Population code')]
+        real_data_population = filter_samples_by_minimum_examples(150, real_data_population,
+                                                                  'Population code')
+        real_data_super_population = real_data[get_relevant_columns(real_data,
+                                                                    'Superpopulation code')]
+        real_data_super_population = filter_samples_by_minimum_examples(10,
+                                                                        real_data_super_population,
+                                                                        'Superpopulation code')
+        self.assertLess(len(real_data_population), len(real_data_super_population))

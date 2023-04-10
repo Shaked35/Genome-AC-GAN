@@ -11,17 +11,24 @@ from matplotlib import cm as cm
 from matplotlib import pyplot as plt
 from scipy import stats as scs
 from scipy.spatial import distance
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, linregress
+from sklearn.decomposition import PCA
 from tensorflow.python import enable_eager_execution
+from tensorflow.python.keras.utils.np_utils import to_categorical
+
+from utils.consts import *
+
 
 try:
     import ot
+
 
     ot_loaded = True
 except ModuleNotFoundError:
     ot_loaded = False
 try:
     import statsmodels.api as sm
+
 
     sm_loaded = True
 except ModuleNotFoundError:
@@ -152,7 +159,7 @@ def plotquant(x, y, keys, statname, col, step=0.05, cumsum=False, ax=None):
         cum = ''
 
     r, _ = pearsonr(x, y)
-    reg = sm.OLS(x, y).fit()
+    _ = sm.OLS(x, y).fit()
     linregress(x, y)
     if ax is None:
         ax = plt.subplot(1, 1, 1)
@@ -548,3 +555,65 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
         DIST = pd.concat([DIST, DTMP], ignore_index=True)
 
     return AA, DIST
+
+
+def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
+                 extra_data_path: str = REAL_EXTRA_DATA_PATH,
+                 target_column: str = DEFAULT_TARGET_COLUMN,
+                 minimum_samples: int = DEFAULT_MINIMUM_SAMPLES):
+    real_data = load_real_data(extra_data_path, hapt_genotypes_path)
+    real_data = real_data[[SAMPLE_COLUMN_NAME, target_column]]
+    real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
+    # Extract the features into a separate matrix
+    X = real_data[list(set(real_data.columns) - {SAMPLE_COLUMN_NAME, target_column, 0, 1})].values
+
+    class_to_id = order_class_ids(X, real_data, target_column)
+    real_data["class_id"] = real_data[target_column].replace(class_to_id)
+
+    real_data = real_data.drop([target_column], axis=1)
+    real_data = real_data.reset_index(drop=True)
+    real_data = real_data.drop(real_data.columns[0:2], axis=1)
+    x_train = real_data[list(set(real_data.columns) - {"class_id", SAMPLE_COLUMN_NAME, target_column, 0, 1})]
+    x_train = x_train.values
+    x_train = x_train - np.random.uniform(0, 0.1, size=(x_train.shape[0], x_train.shape[1]))
+    x_train = pd.DataFrame(x_train)
+    y_train = real_data[["class_id"]]
+    uniques, counts = np.unique(y_train, return_counts=True)
+    class_id_to_counts = dict(zip(uniques, counts))
+    y_train = to_categorical(y_train, num_classes=len(uniques))
+    return (x_train.values, y_train), class_id_to_counts, len(uniques), class_to_id
+
+
+def load_real_data(extra_data_path, hapt_genotypes_path):
+    df = pd.read_csv(hapt_genotypes_path, sep=' ', header=None)
+    df[1] = df[1].str.replace("_A", "")
+    df[1] = df[1].str.replace("_B", "")
+    df = df.set_index(df[1])
+    df_data = pd.read_csv(extra_data_path, sep='\t')
+    df_data = df_data.set_index(df_data[SAMPLE_COLUMN_NAME])
+    return df.join(df_data)
+
+
+def get_relevant_columns(input_df: pd.DataFrame, target_column: str):
+    return [column_name for column_name in input_df.columns if
+            column_name == target_column or isinstance(column_name, int)]
+
+
+def filter_samples_by_minimum_examples(minimum_samples, real_data, target_column):
+    uniques, counts = np.unique(real_data[[target_column]], return_counts=True)
+    class_name_to_counts = dict(zip(uniques, counts))
+    class_name_to_counts = {k: v for k, v in class_name_to_counts.items() if v > minimum_samples}
+    real_data = real_data[real_data[target_column].isin(list(class_name_to_counts.keys()))]
+    return real_data
+
+
+def order_class_ids(X, real_data, target_column):
+    # Use PCA to reduce the dimensionality of the data to 8 components
+    pca = PCA(n_components=8)
+    X_pca = pca.fit_transform(X)
+    # Add the PCA components to the dataframe
+    class_to_pca = real_data[[target_column]]
+    class_to_pca.loc[:, "pca_sum"] = np.sqrt(np.square(X_pca).sum(axis=1))
+    sorted_by_pca = class_to_pca.groupby(target_column).sum()["pca_sum"].sort_values(ascending=False).index.tolist()
+    class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca)}
+    return class_to_id

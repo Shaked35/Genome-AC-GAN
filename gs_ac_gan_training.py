@@ -5,68 +5,19 @@ from pathlib import Path
 
 import tensorflow.python.keras.backend as K
 from keras.layers import BatchNormalization
-from sklearn.decomposition import PCA
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers import Input, Dense, LeakyReLU
 from tensorflow.python.keras.losses import mse
 from tensorflow.python.keras.models import Sequential, Model
 from tensorflow.python.keras.models import save_model
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
-from tensorflow.python.keras.utils.np_utils import to_categorical
 
-from utils.consts import *
-from utils.utils import *
+from utils.util import *
+
 
 plt.switch_backend('agg')
 
 
-def init_dataset(hapt_genotypes_path: str, extra_data_path: str, target_column: str, minimum_samples: int):
-    df = pd.read_csv(hapt_genotypes_path, sep=' ', header=None)
-    df[1] = df[1].str.replace("_A", "")
-    df[1] = df[1].str.replace("_B", "")
-    df = df.set_index(df[1])
-    df_data = pd.read_csv(extra_data_path, sep='\t')
-    df_data = df_data[[SAMPLE_COLUMN_NAME, target_column]]
-    df_data = df_data.set_index(df_data[SAMPLE_COLUMN_NAME])
-    real_data = df.join(df_data)
-    uniques, counts = np.unique(real_data[[target_column]], return_counts=True)
-    class_name_to_counts = dict(zip(uniques, counts))
-    class_name_to_counts = {k: v for k, v in class_name_to_counts.items() if v > minimum_samples}
-    real_data = real_data[real_data[target_column].isin(list(class_name_to_counts.keys()))]
-
-    # Extract the features into a separate matrix
-    X = real_data[list(set(real_data.columns) - {SAMPLE_COLUMN_NAME, target_column, 0, 1})].values
-
-    class_to_id = order_class_ids(X, real_data, target_column)
-    real_data["class_id"] = real_data[target_column].replace(class_to_id)
-
-    real_data = real_data.drop([target_column], axis=1)
-    real_data = real_data.reset_index(drop=True)
-    real_data = real_data.drop(real_data.columns[0:2], axis=1)
-    x_train = real_data[list(set(real_data.columns) - {"class_id", SAMPLE_COLUMN_NAME, target_column, 0, 1})]
-    x_train = x_train.values
-    x_train = x_train - np.random.uniform(0, 0.1, size=(x_train.shape[0], x_train.shape[1]))
-    x_train = pd.DataFrame(x_train)
-    y_train = real_data[["class_id"]]
-    uniques, counts = np.unique(y_train, return_counts=True)
-    class_id_to_counts = dict(zip(uniques, counts))
-    y_train = to_categorical(y_train, num_classes=len(uniques))
-    return (x_train.values, y_train), class_id_to_counts, len(uniques), class_to_id
-
-
-def order_class_ids(X, real_data, target_column):
-    # Use PCA to reduce the dimensionality of the data to 2 components
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X)
-    # Add the PCA components to the dataframe
-    class_to_pca = real_data[[target_column]]
-    class_to_pca.loc[:, "pca_sum"] = np.sqrt(np.square(X_pca).sum(axis=1))
-    sorted_by_pca = class_to_pca.groupby(target_column).sum()["pca_sum"].sort_values(ascending=False).index.tolist()
-    class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca)}
-    return class_to_id
-
-
-# For saving models
 def save_mod(generator: Model, discriminator: Model, acgan: Model, experiment_results_path: str):
     discriminator.trainable = False
     save_model(acgan, os.path.join(experiment_results_path, "acgan"))
@@ -373,7 +324,8 @@ def parse_args():
     parser.add_argument('--first_epoch', type=int, default=DEFAULT_FIRST_EPOCH,
                         help='what is the first epoch number')
     parser.add_argument('--target_column', type=str, default=DEFAULT_TARGET_COLUMN,
-                        help='class column name')
+                        help='class column name', choices=['Population code', 'Population name',
+                                                           'Superpopulation code', 'Superpopulation name'])
     parser.add_argument('--d_activation', type=str, default=DEFAULT_DISCRIMINATOR_ACTIVATION,
                         help='discriminator validation activation function (real/fake)')
     parser.add_argument('--class_loss_function', type=str, default=DEFAULT_CLASS_LOSS_FUNCTION,
