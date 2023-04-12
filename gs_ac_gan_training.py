@@ -98,28 +98,18 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
                 tensorflow.random.uniform((batch_size,), minval=0, maxval=num_classes, dtype=tensorflow.int32),
                 depth=num_classes)
 
-            X_batch_fake = generator.predict_on_batch(
-                [latent_samples, fake_labels_batch])  # create batch from generator using noise as input
+            X_batch_fake = generator.predict_on_batch([latent_samples, fake_labels_batch])
 
             # train discriminator, notice that noise is added to real labels
             discriminator.trainable = True
             d_loss = discriminator.train_on_batch(x_batch_real_with_noise, [y_real - np.random.uniform(0, 0.1, size=(
-                y_real.shape[0], y_real.shape[1])), np.array(Y_batch_real - np.random.uniform(0, 0.1, size=(
-                Y_batch_real.shape[0], Y_batch_real.shape[1])))])
+                y_real.shape[0], y_real.shape[1])), add_noise(Y_batch_real)])
 
-            # r_f, class_pred = discriminator.predict_on_batch(x_batch_real)
-            # f1_score_with_penalty(np.array(Y_batch_real - np.random.uniform(0, 0.1, size=(
-            #     Y_batch_real.shape[0], Y_batch_real.shape[1]))), class_pred)
-            d_loss += discriminator.train_on_batch(X_batch_fake,
-                                                   [y_fake,
-                                                    np.array(fake_labels_batch - np.random.uniform(0, 0.1, size=(
-                                                        fake_labels_batch.shape[0], fake_labels_batch.shape[1])))])
+            d_loss += discriminator.train_on_batch(X_batch_fake, [y_fake, add_noise(fake_labels_batch)])
             d_loss = (d_loss[0] + d_loss[3]) / 2
             # make discriminator non-trainable and train gan
             discriminator.trainable = False
-            g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch],
-                                          [y_real, np.array(fake_labels_batch - np.random.uniform(0, 0.1, size=(
-                                              fake_labels_batch.shape[0], fake_labels_batch.shape[1])))])
+            g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch], [y_real, fake_labels_batch])
             g_loss = g_loss[0]
             avg_d_loss.append(d_loss)
             avg_g_loss.append(g_loss)

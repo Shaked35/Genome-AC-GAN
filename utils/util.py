@@ -593,6 +593,18 @@ def load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data=Fals
     return df.join(df_data)
 
 
+def add_noise(input_array):
+    mask = np.isclose(input_array, 1.0)  # create a boolean mask of elements that are close to 1.0
+    epsilon_arr = np.random.uniform(low=0, high=0.1,
+                                    size=input_array.shape)  # create an array of random epsilons
+    output_array = input_array - mask * epsilon_arr  # subtract the random epsilon only from the elements that match the mask
+    mask = np.isclose(input_array, 0)  # create a boolean mask of elements that are close to 1.0
+    epsilon_arr = np.random.uniform(low=0, high=0.1,
+                                    size=output_array.shape)  # create an array of random epsilons
+    output_array = output_array + mask * epsilon_arr  # subtract the random epsilon only from the elements that match the mask
+    return output_array
+
+
 def get_relevant_columns(input_df: pd.DataFrame, input_columns: list[str]):
     output_columns = []
     for column_name, column_type in input_df.dtypes.to_dict().items():
