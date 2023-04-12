@@ -13,7 +13,6 @@ from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 
 from utils.util import *
 
-
 plt.switch_backend('agg')
 
 
@@ -85,12 +84,14 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
           experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str):
     y_real, y_fake = np.ones([batch_size, 1]), np.zeros([batch_size, 1])
     losses = []
-    d_loss, g_loss = 0, 0
     # Training iteration
     for e in range(first_epoch, epochs + 1):
+        avg_d_loss, avg_g_loss = [], []
         train_dataset = tensorflow.data.Dataset.from_tensor_slices(dataset).shuffle(
             dataset[0].shape[0]).batch(batch_size, drop_remainder=True)
-        for X_batch_real, Y_batch_real in train_dataset:
+        for x_batch_real, Y_batch_real in train_dataset:
+            x_batch_real_with_noise = x_batch_real - np.random.uniform(0, 0.1, size=(
+                x_batch_real.shape[0], x_batch_real.shape[1]))
             latent_samples = np.random.normal(loc=0, scale=1,
                                               size=(batch_size, latent_size))  # create noise to be fed to generator
             fake_labels_batch = tensorflow.one_hot(
@@ -102,9 +103,13 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
 
             # train discriminator, notice that noise is added to real labels
             discriminator.trainable = True
-            d_loss = discriminator.train_on_batch(X_batch_real, [y_real - np.random.uniform(0, 0.1, size=(
+            d_loss = discriminator.train_on_batch(x_batch_real_with_noise, [y_real - np.random.uniform(0, 0.1, size=(
                 y_real.shape[0], y_real.shape[1])), np.array(Y_batch_real - np.random.uniform(0, 0.1, size=(
                 Y_batch_real.shape[0], Y_batch_real.shape[1])))])
+
+            # r_f, class_pred = discriminator.predict_on_batch(x_batch_real)
+            # f1_score_with_penalty(np.array(Y_batch_real - np.random.uniform(0, 0.1, size=(
+            #     Y_batch_real.shape[0], Y_batch_real.shape[1]))), class_pred)
             d_loss += discriminator.train_on_batch(X_batch_fake,
                                                    [y_fake,
                                                     np.array(fake_labels_batch - np.random.uniform(0, 0.1, size=(
@@ -116,9 +121,18 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
                                           [y_real, np.array(fake_labels_batch - np.random.uniform(0, 0.1, size=(
                                               fake_labels_batch.shape[0], fake_labels_batch.shape[1])))])
             g_loss = g_loss[0]
+            avg_d_loss.append(d_loss)
+            avg_g_loss.append(g_loss)
 
-        losses.append((d_loss, g_loss))
-        print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (e, epochs, d_loss, g_loss))
+        losses.append((np.average(avg_d_loss), np.average(avg_g_loss)))
+        # real_fake, class_predictions = discriminator.predict_on_batch([x_batch_real_with_noise])
+        # y_pred = tensorflow.argmax(class_predictions, axis=1)
+        # uniques, counts = np.unique(y_pred, return_counts=True)
+        # class_id_to_counts = dict(zip(uniques, counts))
+        # print("class_id_to_counts: ", class_id_to_counts)
+
+        print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (
+            e, epochs, np.average(avg_d_loss), np.average(avg_g_loss)))
         if e % save_number == 0 or e == epochs:
             plot_pca_comparisons(discriminator=discriminator, acgan=acgan, generator=generator, epoch_number=e,
                                  losses=losses, class_id_to_counts=class_id_to_counts,
@@ -132,7 +146,8 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
                          class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
                          dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
     # Save models
-    save_mod(acgan, generator, discriminator, experiment_results_path)
+    save_mod(acgan=acgan, generator=generator, discriminator=discriminator,
+             experiment_results_path=experiment_results_path)
     # Create AGs
     generated_genomes_total = []
     for class_id, number_of_sequences in class_id_to_counts.items():
@@ -172,7 +187,8 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
     # Define the populations
     populations = list(id_to_class.values())
     # Create a figure with multiple subplots
-    fig, axs = plt.subplots(nrows=math.ceil(len(populations) / 2), ncols=2, figsize=(14, 20))
+    fig, axs = plt.subplots(nrows=math.ceil((len(populations) + 1) / 2), ncols=2,
+                            figsize=(16, len(populations) * 4))
     # Loop over each population and plot the real and fake points separately
     column_mod = 2
     row = 0
@@ -223,20 +239,25 @@ def wasserstein_loss(y_true, y_pred):
 
 
 def f1_score_with_penalty(y_real, y_pred):
+    precision, recall = calculate_precision_recall(y_pred, y_real)
+    distance_penalty = calculate_distance_penalty(y_pred, y_real)
+    return 1 - 2 * ((precision * recall) / (precision + recall + 1e-16)) + distance_penalty
+
+
+def calculate_precision_recall(y_pred, y_real):
     true_positives = tensorflow.reduce_sum(tensorflow.cast(y_real * y_pred, dtype=tensorflow.float32))
     predicted_positives = tensorflow.reduce_sum(tensorflow.cast(y_pred, dtype=tensorflow.float32))
     actual_positives = tensorflow.reduce_sum(tensorflow.cast(y_real, dtype=tensorflow.float32))
     precision = true_positives / predicted_positives
     recall = true_positives / actual_positives
-    distance_penalty = calculate_distance_penalty(y_pred, y_real)
-    return 1 - 2 * ((precision * recall) / (precision + recall + 1e-16)) + distance_penalty
+    return precision, recall
 
 
 def calculate_distance_penalty(y_pred, y_real):
-    true_class = tensorflow.argmax(y_real)
-    fake_class = tensorflow.argmax(y_pred)
+    true_class = tensorflow.argmax(y_real, axis=1)
+    fake_class = tensorflow.argmax(y_pred, axis=1)
     distance_penalty = tensorflow.reduce_mean(
-        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[0]),
+        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[1]),
                         dtype=tensorflow.float32))
     return distance_penalty
 
@@ -255,13 +276,18 @@ def wasserstein_class_loss(y_true, y_pred):
 def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path: str, latent_size: int, alph: float,
          g_learn: float, d_learn: float, epochs: int, batch_size: int, class_loss_weights: float, save_number: int,
          minimum_samples: int, first_epoch: int, target_column: str, sequence_results_path: str, d_activation: str,
-         class_loss_function: str, validation_loss_function: str):
+         class_loss_function: str, validation_loss_function: str, without_extra_data: bool):
     K.clear_session()
     init_gpus()
+    target_column = " ".join(target_column.split("_"))
     dataset, class_id_to_counts, num_classes, class_to_id = init_dataset(hapt_genotypes_path=hapt_genotypes_path,
                                                                          extra_data_path=extra_data_path,
                                                                          target_column=target_column,
-                                                                         minimum_samples=minimum_samples)
+                                                                         minimum_samples=minimum_samples,
+                                                                         without_extra_data=without_extra_data)
+    # save class id map
+    with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
+        json.dump(class_to_id, f)
     number_of_genotypes = dataset[0].shape[1]
     id_to_class = reverse_dict(class_to_id)
     print(f"dataset shapes: {dataset[0].shape, dataset[1].shape}")
@@ -322,14 +348,16 @@ def parse_args():
     parser.add_argument('--first_epoch', type=int, default=DEFAULT_FIRST_EPOCH,
                         help='what is the first epoch number')
     parser.add_argument('--target_column', type=str, default=DEFAULT_TARGET_COLUMN,
-                        help='class column name', choices=['Population code', 'Population name',
-                                                           'Superpopulation code', 'Superpopulation name'])
+                        help='class column name', choices=['Population_code', 'Population_name',
+                                                           'Superpopulation_code', 'Superpopulation_name'])
     parser.add_argument('--d_activation', type=str, default=DEFAULT_DISCRIMINATOR_ACTIVATION,
                         help='discriminator validation activation function (real/fake)')
     parser.add_argument('--class_loss_function', type=str, default=DEFAULT_CLASS_LOSS_FUNCTION,
                         help='loss function between different classes')
     parser.add_argument('--validation_loss_function', type=str, default=DEFAULT_VALIDATION_LOSS_FUNCTION,
                         help='loss function between different real/fake')
+    parser.add_argument('--without_extra_data', type=bool, default=False,
+                        help="don't need to load extra data")
     return parser.parse_args()
 
 
@@ -361,4 +389,5 @@ if __name__ == '__main__':
          sequence_results_path=sequence_results,
          d_activation=args.d_activation,
          class_loss_function=args.class_loss_function,
-         validation_loss_function=args.validation_loss_function)
+         validation_loss_function=args.validation_loss_function,
+         without_extra_data=args.without_extra_data)

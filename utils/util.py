@@ -1,6 +1,7 @@
 import copy
 import os
 import os.path
+import random
 
 import matplotlib.backends.backend_pdf
 import numpy as np
@@ -18,17 +19,14 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 
 from utils.consts import *
 
-
 try:
     import ot
-
 
     ot_loaded = True
 except ModuleNotFoundError:
     ot_loaded = False
 try:
     import statsmodels.api as sm
-
 
     sm_loaded = True
 except ModuleNotFoundError:
@@ -85,11 +83,7 @@ def plotreg(x, y, keys, statname, col, ax=None):
         alpha = 1
     else:
         alpha = .6
-    # if sm_loaded:
-    # ax.plot(x, y , label=f"{keys[1]}: cor={round(r,2)} slope={round(reg.params[0],2)}", c=col, marker='o', lw=0, alpha=alpha)
     ax.plot(x, y, label=f"{keys[1]}: cor={round(r, 2)}", c=col, marker='o', lw=0, alpha=alpha)
-    # ax.axis('equal')
-    # ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls='--', alpha=.5)
     ax.plot(lims, lims, ls='--', alpha=1, c='black')
     ax.set_xlabel(f'{statname} in {keys[0]}')
     ax.set_ylabel(f'{statname} in {keys[1]}')
@@ -316,7 +310,6 @@ def plotPCAscatter(pcdf, method, orderedCat, output_dir):
     pdf.savefig()
     g = sns.FacetGrid(pcdf, col="label", col_order=orderedCat)
     g.map(sns.scatterplot, 'PC5', 'PC6', alpha=.1)
-    # plt.suptitle(method)
     plt.tight_layout()
     pdf.savefig()
     pdf.close()
@@ -355,8 +348,6 @@ def plotPCAsuperpose(pcdf, method, orderedCat, output_dir, colpal):
             ax.set_title(cat)
             win += 1
     fig.suptitle(method)
-    # plt.tight_layout()
-    # plt.subplots_adjust(top=1)
     plt.savefig(os.path.join(output_dir, "PCA_allel_compare_models_" + method + ".pdf"))
 
 
@@ -560,31 +551,39 @@ def computeAAandDist(dat, samplelabel, categ=None, refCateg='Real', saveAllDist=
 def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
                  extra_data_path: str = REAL_EXTRA_DATA_PATH,
                  target_column: str = DEFAULT_TARGET_COLUMN,
-                 minimum_samples: int = DEFAULT_MINIMUM_SAMPLES):
-    real_data = load_real_data(extra_data_path, hapt_genotypes_path)
-    real_data = real_data[[SAMPLE_COLUMN_NAME, target_column]]
+                 minimum_samples: int = DEFAULT_MINIMUM_SAMPLES,
+                 without_extra_data: bool = False):
+    real_data = load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data)
+    relevant_columns = get_relevant_columns(real_data, [SAMPLE_COLUMN_NAME, target_column])
+    real_data = real_data[relevant_columns]
     real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
     # Extract the features into a separate matrix
-    X = real_data[list(set(real_data.columns) - {SAMPLE_COLUMN_NAME, target_column, 0, 1})].values
+    X = real_data[list(set(relevant_columns) - {SAMPLE_COLUMN_NAME, target_column})].values
 
     class_to_id = order_class_ids(X, real_data, target_column)
-    real_data["class_id"] = real_data[target_column].replace(class_to_id)
+    class_id_to_counts, uniques, y_train = extract_y_column(class_to_id, real_data, target_column)
+    x_train = extract_x_values(real_data, relevant_columns, target_column)
 
-    real_data = real_data.drop([target_column], axis=1)
-    real_data = real_data.reset_index(drop=True)
-    real_data = real_data.drop(real_data.columns[0:2], axis=1)
-    x_train = real_data[list(set(real_data.columns) - {"class_id", SAMPLE_COLUMN_NAME, target_column, 0, 1})]
-    x_train = x_train.values
-    x_train = x_train - np.random.uniform(0, 0.1, size=(x_train.shape[0], x_train.shape[1]))
-    x_train = pd.DataFrame(x_train)
-    y_train = real_data[["class_id"]]
+    return (x_train, y_train), class_id_to_counts, len(uniques), class_to_id
+
+
+def extract_y_column(class_to_id, real_data, target_column):
+    y_train = pd.DataFrame(real_data[target_column].replace(class_to_id))
     uniques, counts = np.unique(y_train, return_counts=True)
     class_id_to_counts = dict(zip(uniques, counts))
     y_train = to_categorical(y_train, num_classes=len(uniques))
-    return (x_train.values, y_train), class_id_to_counts, len(uniques), class_to_id
+    return class_id_to_counts, uniques, y_train
 
 
-def load_real_data(extra_data_path, hapt_genotypes_path):
+def extract_x_values(real_data, relevant_columns, target_column):
+    x_train = real_data[list(set(relevant_columns) - {SAMPLE_COLUMN_NAME, target_column, "class_id"})]
+    x_train = x_train.values
+    return x_train
+
+
+def load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data=False):
+    if without_extra_data:
+        return pd.read_csv(hapt_genotypes_path)
     df = pd.read_csv(hapt_genotypes_path, sep=' ', header=None)
     df[1] = df[1].str.replace("_A", "")
     df[1] = df[1].str.replace("_B", "")
@@ -594,9 +593,12 @@ def load_real_data(extra_data_path, hapt_genotypes_path):
     return df.join(df_data)
 
 
-def get_relevant_columns(input_df: pd.DataFrame, target_column: str):
-    return [column_name for column_name in input_df.columns if
-            column_name == target_column or isinstance(column_name, int)]
+def get_relevant_columns(input_df: pd.DataFrame, input_columns: list[str]):
+    output_columns = []
+    for column_name, column_type in input_df.dtypes.to_dict().items():
+        if column_name in input_columns or column_type == "int64":
+            output_columns.append(column_name)
+    return output_columns
 
 
 def filter_samples_by_minimum_examples(minimum_samples, real_data, target_column):
@@ -608,12 +610,87 @@ def filter_samples_by_minimum_examples(minimum_samples, real_data, target_column
 
 
 def order_class_ids(X, real_data, target_column):
-    # Use PCA to reduce the dimensionality of the data to 8 components
     pca = PCA(n_components=8)
     X_pca = pca.fit_transform(X)
-    # Add the PCA components to the dataframe
     class_to_pca = real_data[[target_column]]
     class_to_pca.loc[:, "pca_sum"] = np.sqrt(np.square(X_pca).sum(axis=1))
     sorted_by_pca = class_to_pca.groupby(target_column).sum()["pca_sum"].sort_values(ascending=False).index.tolist()
     class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca)}
     return class_to_id
+
+
+def init_analysis_args(output_dir, models_to_test):
+    print("* Loading data (short script sumstats)...")
+    model_name_to_input_file = {model_name: f"../{data['path']}" for model_name, data in models_to_test.items()}
+    model_name_to_color = {model_name: data["color"] for model_name, data in models_to_test.items()}
+    color_palette = {key: model_name_to_color[key] for key in model_name_to_input_file.keys()}
+    sns.set_palette(color_palette.values())
+    print(color_palette)
+    sns.set_palette(color_palette.values())
+    print(model_name_to_input_file.keys())
+    sns.palplot(sns.color_palette())
+    # set the seed so that the same real individual are subsampled (when needed)
+    # to ensure consistency of the scores when adding a new model or a new sumstat
+    np.random.seed(3)
+    random.seed(3)
+    print(f"Figures will be saved in {output_dir}")
+    if os.path.exists(output_dir):
+        print('This directory exists, the following files might be overwritten:')
+        print(os.listdir(output_dir))
+    return model_name_to_input_file, model_name_to_color, color_palette
+
+
+def load_analysis_data(number_of_samples: int, model_name_to_input_file: dict):
+    transformations = {'to_minor_encoding': False, 'min_af': 0, 'max_af': 1}
+
+    datasets, model_keep_all_snps, sample_info = dict(), dict(), dict()
+    for model_name, file_path in model_name_to_input_file.items():
+        print(model_name, "loaded from", file_path)
+        model_sequences = pd.read_csv(file_path, sep=' ', header=None)
+        if 'GS-AC-GAN' in model_name:
+            model_sequences.columns = [column if column == 0 else column + 1 for column in model_sequences.columns]
+            model_sequences.insert(0, 1, [f"AG{sample_id}" for sample_id in range(model_sequences.shape[0])])
+        if model_sequences.shape[1] == 808:  # special case for a specific file that had an extra empty column
+            model_sequences = model_sequences.drop(columns=model_sequences.columns[-1])
+        if model_sequences.shape[0] > number_of_samples:
+            model_sequences = model_sequences.drop(
+                index=np.sort(
+                    np.random.choice(np.arange(model_sequences.shape[0]),
+                                     size=model_sequences.shape[0] - number_of_samples,
+                                     replace=False))
+            )
+        # overwrite file first column to set the label name chosen in infiles (eg GAN, etc):
+        model_sequences[0] = model_name
+        sample_info[model_name] = pd.DataFrame({'label': model_sequences[0], 'ind': model_sequences[1]})
+        datasets[model_name] = np.array(model_sequences.loc[:, 2:].astype(int))
+
+        # transformations can be maf filtering, recoding into major=0/minor=1 format
+        if transformations is not None:
+            datasets[model_name], model_keep_all_snps[model_name] = datatransform(datasets[model_name],
+                                                                                  **transformations)
+        print(model_name, datasets[model_name].shape)
+    extra_sample_info = pd.DataFrame(np.concatenate(list(sample_info.values())), columns=['label', 'id'])
+    print("Dictionary of datasets:", len(datasets))
+    return extra_sample_info, sample_info, datasets, transformations, model_keep_all_snps
+
+
+def build_allele_frequency(datasets):
+    """
+    Compute counts of "1" allele (could be derived, alternative or minor allele depending on the encoding)
+    And check whether some sites are fixed
+    matching_SNPs will be set to True if all datasets have the same nb of SNPs
+    in this case we automatically consider that there can be a one-to-one comparison
+    ie 1st SNP of generated datset should mimic the 1st real SNP and so on
+    :param datasets: model to genotypes sequences
+    :return:
+    """
+
+    is_fixed_dic, nindiv, sum_alleles_by_position, allele_frequency = dict(), dict(), dict(), dict()
+    for model, genotypes_sequences in datasets.items():
+        nindiv[model] = genotypes_sequences.shape[0]
+        sum_alleles_by_position[model] = np.sum(genotypes_sequences, axis=0)
+        allele_frequency[model] = sum_alleles_by_position[model] / nindiv[model]
+        is_fixed_dic[model] = (np.sum(genotypes_sequences, axis=0) % nindiv[model] == 0)
+    models = datasets.keys()
+    is_fixed = np.vstack([is_fixed_dic[cat] for cat in models]).any(axis=0)
+    return sum_alleles_by_position, allele_frequency, is_fixed
