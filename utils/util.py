@@ -559,11 +559,9 @@ def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
     real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
     # Extract the features into a separate matrix
     X = real_data[list(set(relevant_columns) - {SAMPLE_COLUMN_NAME, target_column})].values
-
+    x_train = extract_x_values(real_data, relevant_columns, target_column)
     class_to_id = order_class_ids(X, real_data, target_column)
     class_id_to_counts, uniques, y_train = extract_y_column(class_to_id, real_data, target_column)
-    x_train = extract_x_values(real_data, relevant_columns, target_column)
-
     return (x_train, y_train), class_id_to_counts, len(uniques), class_to_id
 
 
@@ -593,18 +591,6 @@ def load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data=Fals
     return df.join(df_data)
 
 
-def add_noise(input_array):
-    mask = np.isclose(input_array, 1.0)  # create a boolean mask of elements that are close to 1.0
-    epsilon_arr = np.random.uniform(low=0, high=0.1,
-                                    size=input_array.shape)  # create an array of random epsilons
-    output_array = input_array - mask * epsilon_arr  # subtract the random epsilon only from the elements that match the mask
-    mask = np.isclose(input_array, 0)  # create a boolean mask of elements that are close to 1.0
-    epsilon_arr = np.random.uniform(low=0, high=0.1,
-                                    size=output_array.shape)  # create an array of random epsilons
-    output_array = output_array + mask * epsilon_arr  # subtract the random epsilon only from the elements that match the mask
-    return output_array
-
-
 def get_relevant_columns(input_df: pd.DataFrame, input_columns: list[str]):
     output_columns = []
     for column_name, column_type in input_df.dtypes.to_dict().items():
@@ -626,8 +612,8 @@ def order_class_ids(X, real_data, target_column):
     X_pca = pca.fit_transform(X)
     class_to_pca = real_data[[target_column]]
     class_to_pca.loc[:, "pca_sum"] = np.sqrt(np.square(X_pca).sum(axis=1))
-    sorted_by_pca = class_to_pca.groupby(target_column).sum()["pca_sum"].sort_values(ascending=False).index.tolist()
-    class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca)}
+    sorted_by_pca = pd.DataFrame(class_to_pca.groupby(target_column).sum()["pca_sum"]).sort_values("pca_sum")
+    class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca.index)}
     return class_to_id
 
 

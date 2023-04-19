@@ -1,35 +1,42 @@
 import argparse
 import json
 import math
+import os.path
 from pathlib import Path
 
 import tensorflow.python.keras.backend as K
 from keras.layers import BatchNormalization
+from sklearn.metrics import f1_score
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.layers import Input, Dense, LeakyReLU
+from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout
 from tensorflow.python.keras.models import Sequential, Model
-from tensorflow.python.keras.models import save_model
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 
 from utils.util import *
 
 plt.switch_backend('agg')
+class_weights = []
 
 
 def save_mod(generator: Model, discriminator: Model, acgan: Model, experiment_results_path: str):
     discriminator.trainable = False
-    save_model(acgan, os.path.join(experiment_results_path, "acgan"))
+    acgan.save(os.path.join(experiment_results_path, "acgan"))
+    acgan.save_weights(os.path.join(experiment_results_path, "acgan_weights"))
     discriminator.trainable = True
-    save_model(generator, os.path.join(experiment_results_path, "generator"))
-    save_model(discriminator, os.path.join(experiment_results_path, "discriminator"))
+    generator.save(os.path.join(experiment_results_path, "generator"))
+    generator.save_weights(os.path.join(experiment_results_path, "generator_weights"))
+    discriminator.save(os.path.join(experiment_results_path, "discriminator"))
+    discriminator.save_weights(os.path.join(experiment_results_path, "discriminator_weights"))
 
 
 # Make generator
 def build_generator(latent_dim: int, num_classes: int, number_of_genotypes: int, alph: float):
     generator = Sequential()
     generator.add(
-        Dense(int(number_of_genotypes // 1.2), input_shape=(latent_dim + NUMBER_REPEAT_CLASS_VECTOR * num_classes,),
+        Dense(int(number_of_genotypes // 1.3), input_shape=(latent_dim + NUMBER_REPEAT_CLASS_VECTOR * num_classes,),
               kernel_regularizer=regularizers.l2(0.0001)))
+    generator.add(LeakyReLU(alpha=alph))
+    generator.add(Dense(int(number_of_genotypes // 1.2), kernel_regularizer=regularizers.l2(0.0001)))
     generator.add(LeakyReLU(alpha=alph))
     generator.add(Dense(int(number_of_genotypes // 1.1), kernel_regularizer=regularizers.l2(0.0001)))
     generator.add(LeakyReLU(alpha=alph))
@@ -52,10 +59,15 @@ def build_discriminator(number_of_genotypes: int, num_classes: int, alph: float,
     discriminator = Sequential()
     discriminator.add(
         Dense(number_of_genotypes // 2, input_shape=(number_of_genotypes,), kernel_regularizer=regularizers.l2(0.0001)))
+
     discriminator.add(LeakyReLU(alpha=alph))
+    discriminator.add(Dropout(0.2))
     discriminator.add(Dense(number_of_genotypes // 3, kernel_regularizer=regularizers.l2(0.0001)))
     discriminator.add(LeakyReLU(alpha=alph))
-
+    discriminator.add(Dropout(0.2))
+    discriminator.add(Dense(number_of_genotypes // 4, kernel_regularizer=regularizers.l2(0.0001)))
+    discriminator.add(LeakyReLU(alpha=alph))
+    discriminator.add(Dropout(0.1))
     sequence = Input(shape=(number_of_genotypes,), dtype='float32')
 
     # Extract features from images
@@ -81,7 +93,8 @@ def build_acgan(generator, discriminator):
 
 def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_classes: int, latent_size: int,
           generator: Model, discriminator: Model, acgan: Model, save_number: int, class_id_to_counts: dict,
-          experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str):
+          experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str,
+          test_dataset):
     y_real, y_fake = np.ones([batch_size, 1]), np.zeros([batch_size, 1])
     losses = []
     # Training iteration
@@ -103,26 +116,30 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
             # train discriminator, notice that noise is added to real labels
             discriminator.trainable = True
             d_loss = discriminator.train_on_batch(x_batch_real_with_noise, [y_real - np.random.uniform(0, 0.1, size=(
-                y_real.shape[0], y_real.shape[1])), add_noise(Y_batch_real)])
+                y_real.shape[0], y_real.shape[1])), Y_batch_real])
 
-            d_loss += discriminator.train_on_batch(X_batch_fake, [y_fake, add_noise(fake_labels_batch)])
-            d_loss = (d_loss[0] + d_loss[3]) / 2
+            d_loss += discriminator.train_on_batch(X_batch_fake, [y_fake, fake_labels_batch])
+            d_loss = (d_loss[0] + d_loss[5]) / 2
             # make discriminator non-trainable and train gan
             discriminator.trainable = False
-            g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch], [y_real, fake_labels_batch])
+            g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch],
+                                          [y_real, fake_labels_batch])
             g_loss = g_loss[0]
             avg_d_loss.append(d_loss)
             avg_g_loss.append(g_loss)
 
         losses.append((np.average(avg_d_loss), np.average(avg_g_loss)))
+
         # real_fake, class_predictions = discriminator.predict_on_batch([x_batch_real_with_noise])
         # y_pred = tensorflow.argmax(class_predictions, axis=1)
-        # uniques, counts = np.unique(y_pred, return_counts=True)
-        # class_id_to_counts = dict(zip(uniques, counts))
-        # print("class_id_to_counts: ", class_id_to_counts)
+        # uniques_test, counts_test = np.unique(y_pred, return_counts=True)
+        # class_id_to_counts_test = dict(zip(uniques_test, counts_test))
+        # print("class_id_to_counts: ", class_id_to_counts_test)
 
         print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (
             e, epochs, np.average(avg_d_loss), np.average(avg_g_loss)))
+        if e % 5 == 0 or e == epochs:
+            save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path)
         if e % save_number == 0 or e == epochs:
             plot_pca_comparisons(discriminator=discriminator, acgan=acgan, generator=generator, epoch_number=e,
                                  losses=losses, class_id_to_counts=class_id_to_counts,
@@ -132,12 +149,28 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
                                  sequence_results_path=sequence_results_path)
 
 
+
+def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path):
+    shuffled_dataset = tensorflow.data.Dataset.from_tensor_slices(test_dataset).shuffle(
+        test_dataset[0].shape[0]).batch(test_dataset[0].shape[0], drop_remainder=True)
+    for x_batch_real, y_batch_real in shuffled_dataset:
+        # x_values = x_batch_real - np.random.uniform(0, EPSILON,
+        #                                             size=(x_batch_real.shape[0], x_batch_real.shape[1]))
+        r_f, class_predictions = discriminator.predict_on_batch(x_batch_real)
+        y_pred = tensorflow.argmax(class_predictions, axis=1)
+        pd.DataFrame({"class_pred": np.array(y_pred), "class_real": np.array(y_batch_real),
+                      "real_fake_pred": r_f.flatten()}).to_csv(
+            os.path.join(experiment_results_path, "discriminator_pred_on_test.csv"), index=False)
+
+
 def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, epoch_number: int, losses: list,
                          class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
                          dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
     # Save models
     save_mod(acgan=acgan, generator=generator, discriminator=discriminator,
              experiment_results_path=experiment_results_path)
+
+
     # Create AGs
     generated_genomes_total = []
     for class_id, number_of_sequences in class_id_to_counts.items():
@@ -154,6 +187,8 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
     generated_genomes_df = pd.concat(generated_genomes_total)
     generated_genomes_df.to_csv(os.path.join(sequence_results_path, "genotypes.hapt"), sep=" ", header=False,
                                 index=False)
+    plt.rcParams['figure.max_open_warning'] = 50 # set the max number of figures before the warning is triggered to 50
+
     fig, ax = plt.subplots()
     plt.plot(np.array([losses]).T[0], label='Discriminator')
     plt.plot(np.array([losses]).T[1], label='Generator')
@@ -229,9 +264,15 @@ def wasserstein_loss(y_true, y_pred):
 
 
 def f1_score_with_penalty(y_real, y_pred):
-    precision, recall = calculate_precision_recall(y_pred, y_real)
     distance_penalty = calculate_distance_penalty(y_pred, y_real)
-    return 1 - 2 * ((precision * recall) / (precision + recall + 1e-16)) + distance_penalty
+    return f1_loss_score(y_real, y_pred) + distance_penalty
+
+
+def f1_loss_score(y_true, y_pred):
+    precision, recall = calculate_precision_recall(y_pred, y_true)
+    f1 = 2 * precision * recall / (precision + recall + tensorflow.keras.backend.epsilon())
+
+    return 1 - f1
 
 
 def calculate_precision_recall(y_pred, y_real):
@@ -247,9 +288,28 @@ def calculate_distance_penalty(y_pred, y_real):
     true_class = tensorflow.argmax(y_real, axis=1)
     fake_class = tensorflow.argmax(y_pred, axis=1)
     distance_penalty = tensorflow.reduce_mean(
-        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[1]),
+        tensorflow.cast((tensorflow.abs(true_class - fake_class)) / (y_real.shape[1] * 2),
                         dtype=tensorflow.float32))
     return distance_penalty
+
+
+def bce_with_penalty(y_real, y_pred):
+    distance_penalty = calculate_distance_penalty(y_pred, y_real)
+    return weighted_bce(y_real, y_pred) + distance_penalty
+
+
+def bce_score(y_real, y_pred):
+    bce_loss = tensorflow.keras.losses.binary_crossentropy(y_real, y_pred, from_logits=True)
+    weighted_bce_loss = tensorflow.multiply(bce_loss, class_weights)
+    return weighted_bce_loss
+
+
+# define your class loss function with weights
+def weighted_bce(y_true, y_pred):
+    weights = tensorflow.constant(class_weights, dtype=y_pred.dtype)
+    unweighted_losses = tensorflow.nn.sigmoid_cross_entropy_with_logits(y_true, y_pred)
+    weighted_losses = tensorflow.multiply(unweighted_losses, weights)
+    return tensorflow.reduce_mean(weighted_losses, axis=-1)
 
 
 def wasserstein_class_loss(y_true, y_pred):
@@ -261,6 +321,31 @@ def wasserstein_class_loss(y_true, y_pred):
 
     # Compute the Wasserstein distance
     return K.mean(y_true_int * y_pred_relevant)
+
+
+def prepare_test_data(experiment_results, test_path="resource/test_0.2_sub_pop.csv"):
+    target_column = "Population code"
+
+    with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
+        json_data = file.read()
+
+    class_to_id = json.loads(json_data)
+    test_set = pd.read_csv(test_path)
+    relevant_columns = get_relevant_columns(test_set, [SAMPLE_COLUMN_NAME, target_column])
+    test_set = filter_samples_by_minimum_examples(10, test_set, target_column)
+    _, _, y_real = extract_y_column(class_to_id, test_set, target_column)
+    y_real = tensorflow.argmax(y_real, axis=1)
+    x_values = extract_x_values(test_set, relevant_columns, target_column)
+    return x_values, y_real
+
+
+# define a function to calculate class weights based on inverse frequency
+def set_class_weights(y):
+    n_samples = len(y)
+    n_classes = y.shape[1]
+    class_counts = np.sum(y, axis=0)
+    for i in range(n_classes):
+        class_weights.append((n_samples - class_counts[i]) / class_counts[i])
 
 
 def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path: str, latent_size: int, alph: float,
@@ -275,6 +360,7 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                                                                          target_column=target_column,
                                                                          minimum_samples=minimum_samples,
                                                                          without_extra_data=without_extra_data)
+    set_class_weights(dataset[1])
     # save class id map
     with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
         json.dump(class_to_id, f)
@@ -293,7 +379,12 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     discriminator = build_discriminator(number_of_genotypes=number_of_genotypes, num_classes=num_classes, alph=alph,
                                         d_activation=d_activation)
 
-    class_loss_function = f1_score_with_penalty if class_loss_function == 'f1_score_with_penalty' else class_loss_function
+    if class_loss_function == "bce_with_penalty":
+        class_loss_function = bce_with_penalty
+    if class_loss_function == "f1_score_with_penalty":
+        class_loss_function = f1_score_with_penalty
+    if class_loss_function == "f1_score":
+        class_loss_function = f1_loss_score
     discriminator.compile(optimizer=RMSprop(lr=d_learn), loss=[validation_loss_function, class_loss_function],
                           loss_weights=[1, class_loss_weights], metrics=['accuracy'])
     # Set discriminator to non-trainable
@@ -303,11 +394,13 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     acgan.compile(optimizer=RMSprop(lr=g_learn), loss=[validation_loss_function, class_loss_function],
                   loss_weights=[1, class_loss_weights],
                   metrics=['accuracy'])
+
+    test_dataset = prepare_test_data(experiment_results)
     train(batch_size=batch_size, epochs=epochs, dataset=dataset, first_epoch=first_epoch, num_classes=num_classes,
           latent_size=latent_size, generator=generator, discriminator=discriminator, acgan=acgan,
           save_number=save_number, class_id_to_counts=class_id_to_counts,
           experiment_results_path=experiment_results_path, id_to_class=id_to_class, real_class_names=real_class_names,
-          sequence_results_path=sequence_results_path)
+          sequence_results_path=sequence_results_path, test_dataset=test_dataset)
 
 
 def parse_args():
