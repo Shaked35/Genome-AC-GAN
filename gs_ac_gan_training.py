@@ -4,6 +4,7 @@ import math
 import os.path
 from pathlib import Path
 
+import pandas as pd
 import tensorflow.python.keras.backend as K
 from keras.layers import BatchNormalization
 from sklearn.metrics import f1_score
@@ -95,6 +96,7 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
           generator: Model, discriminator: Model, acgan: Model, save_number: int, class_id_to_counts: dict,
           experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str,
           test_dataset):
+    class_metric_results = None
     y_real, y_fake = np.ones([batch_size, 1]), np.zeros([batch_size, 1])
     losses = []
     # Training iteration
@@ -138,10 +140,14 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
 
         print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (
             e, epochs, np.average(avg_d_loss), np.average(avg_g_loss)))
-        if e % 5 == 0 or e == epochs:
-            save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path)
         if e % save_number == 0 or e == epochs:
-            plot_pca_comparisons(discriminator=discriminator, acgan=acgan, generator=generator, epoch_number=e,
+            class_metric_results = save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path,
+                                                                 id_to_class, class_metric_results, e)
+            # Save models
+            save_mod(acgan=acgan, generator=generator, discriminator=discriminator,
+                     experiment_results_path=experiment_results_path)
+
+            plot_pca_comparisons(generator=generator, epoch_number=e,
                                  losses=losses, class_id_to_counts=class_id_to_counts,
                                  experiment_results_path=experiment_results_path,
                                  latent_size=latent_size, num_classes=num_classes, dataset=dataset,
@@ -149,28 +155,40 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
                                  sequence_results_path=sequence_results_path)
 
 
-
-def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path):
+def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path, id_to_class,
+                                  class_metric_results, epoch):
     shuffled_dataset = tensorflow.data.Dataset.from_tensor_slices(test_dataset).shuffle(
         test_dataset[0].shape[0]).batch(test_dataset[0].shape[0], drop_remainder=True)
     for x_batch_real, y_batch_real in shuffled_dataset:
-        # x_values = x_batch_real - np.random.uniform(0, EPSILON,
-        #                                             size=(x_batch_real.shape[0], x_batch_real.shape[1]))
         r_f, class_predictions = discriminator.predict_on_batch(x_batch_real)
         y_pred = tensorflow.argmax(class_predictions, axis=1)
-        pd.DataFrame({"class_pred": np.array(y_pred), "class_real": np.array(y_batch_real),
-                      "real_fake_pred": r_f.flatten()}).to_csv(
+        class_classifier_results = pd.DataFrame({"class_pred": np.array(y_pred), "class_real": np.array(y_batch_real),
+                                                 "real_fake_pred": r_f.flatten()})
+        class_classifier_results["class_name_real"] = class_classifier_results["class_real"].replace(id_to_class)
+        class_classifier_results["class_name_pred"] = class_classifier_results["class_pred"].replace(id_to_class)
+        class_classifier_results.to_csv(
             os.path.join(experiment_results_path, "discriminator_pred_on_test.csv"), index=False)
+        class_names = list(set(id_to_class.values()))
+        plot_confusion_matrix(class_classifier_results["class_real"],
+                              class_classifier_results["class_pred"], class_names,
+                              experiment_results_path)
+
+        row_results = compute_metrics(class_classifier_results["class_real"],
+                                      class_classifier_results["class_pred"])
+        row_results["epoch"] = epoch
+        row_results = pd.DataFrame([row_results])
+        if class_metric_results is None:
+            class_metric_results = pd.DataFrame(row_results)
+        else:
+            class_metric_results = pd.concat([class_metric_results, row_results])
+        class_metric_results.to_csv(os.path.join(experiment_results_path, DISCRIMINATOR_METRICS_FILE),
+                                    index=False)
+        return class_metric_results
 
 
-def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, epoch_number: int, losses: list,
+def plot_pca_comparisons(generator: Model, epoch_number: int, losses: list,
                          class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
                          dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
-    # Save models
-    save_mod(acgan=acgan, generator=generator, discriminator=discriminator,
-             experiment_results_path=experiment_results_path)
-
-
     # Create AGs
     generated_genomes_total = []
     for class_id, number_of_sequences in class_id_to_counts.items():
@@ -187,7 +205,7 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
     generated_genomes_df = pd.concat(generated_genomes_total)
     generated_genomes_df.to_csv(os.path.join(sequence_results_path, "genotypes.hapt"), sep=" ", header=False,
                                 index=False)
-    plt.rcParams['figure.max_open_warning'] = 50 # set the max number of figures before the warning is triggered to 50
+    plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
 
     fig, ax = plt.subplots()
     plt.plot(np.array([losses]).T[0], label='Discriminator')
@@ -196,12 +214,12 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
     plt.legend()
     fig.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_loss.pdf'), format='pdf')
     # Make PCA
-    df_pca = dataset[0].copy()
-    df_pca[df_pca < 0] = 0
-    df_pca = np.rint(df_pca)
-    df_pca = pd.DataFrame(df_pca)
-    df_pca['Type'] = real_class_names
-    df_all_pca = pd.concat([df_pca, generated_genomes_df])
+    real_sequences = dataset[0].copy()
+    real_sequences[real_sequences < 0] = 0
+    real_sequences = np.rint(real_sequences)
+    real_sequences = pd.DataFrame(real_sequences)
+    real_sequences['Type'] = real_class_names
+    df_all_pca = pd.concat([real_sequences, generated_genomes_df])
     pca = PCA(n_components=2)
     PCs = pca.fit_transform(df_all_pca.drop(['Type'], axis=1))
     PCs_df = pd.DataFrame(data=PCs, columns=['PC1', 'PC2'])
@@ -259,20 +277,53 @@ def plot_pca_comparisons(discriminator: Model, acgan: Model, generator: Model, e
     plt.switch_backend('agg')
 
 
-def wasserstein_loss(y_true, y_pred):
-    return tensorflow.reduce_mean((y_true * y_pred))
+def f1_loss_for_labels(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='micro', rounded=True)
 
 
-def f1_score_with_penalty(y_real, y_pred):
-    distance_penalty = calculate_distance_penalty(y_pred, y_real)
-    return f1_loss_score(y_real, y_pred) + distance_penalty
-
-
-def f1_loss_score(y_true, y_pred):
-    precision, recall = calculate_precision_recall(y_pred, y_true)
+def f1_loss_for_one_hot(y_true, y_pred, average, rounded=False):
+    if rounded:
+        tmp_y_pred = tensorflow.round(y_pred)
+    else:
+        tmp_y_pred = y_pred
+    precision, recall = calculate_precision_recall(tmp_y_pred, y_true)
     f1 = 2 * precision * recall / (precision + recall + tensorflow.keras.backend.epsilon())
 
-    return 1 - f1
+    if average == 'micro':
+        tp = tensorflow.reduce_sum(y_true * tmp_y_pred)
+        fp = tensorflow.reduce_sum(tmp_y_pred) - tp
+        fn = tensorflow.reduce_sum(y_true) - tp
+        f1_micro = (2 * tp) / (2 * tp + fp + fn)
+        return 1 - f1_micro
+    elif average == 'macro':
+        return 1 - f1
+    elif average == 'weighted':
+        weights = tensorflow.reduce_sum(y_true, axis=0)
+        weights /= tensorflow.reduce_sum(weights)
+        return 1 - tensorflow.reduce_sum(f1 * tensorflow.cast(weights, dtype=tensorflow.float32))
+    elif average == 'samples':
+        tp = tensorflow.reduce_sum(y_true * tmp_y_pred, axis=1)
+        fp = tensorflow.reduce_sum(tmp_y_pred, axis=1) - tp
+        fn = tensorflow.reduce_sum(y_true, axis=1) - tp
+        f1_samples = (2 * tp) / (2 * tp + fp + fn)
+        return 1 - tensorflow.reduce_mean(f1_samples)
+    return None
+
+
+def f1_loss_score_macro(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='macro')
+
+
+def f1_loss_score_micro(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='micro')
+
+
+def f1_loss_score_weighted(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='weighted')
+
+
+def f1_loss_score_samples(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='samples')
 
 
 def calculate_precision_recall(y_pred, y_real):
@@ -293,38 +344,8 @@ def calculate_distance_penalty(y_pred, y_real):
     return distance_penalty
 
 
-def bce_with_penalty(y_real, y_pred):
-    distance_penalty = calculate_distance_penalty(y_pred, y_real)
-    return weighted_bce(y_real, y_pred) + distance_penalty
-
-
-def bce_score(y_real, y_pred):
-    bce_loss = tensorflow.keras.losses.binary_crossentropy(y_real, y_pred, from_logits=True)
-    weighted_bce_loss = tensorflow.multiply(bce_loss, class_weights)
-    return weighted_bce_loss
-
-
-# define your class loss function with weights
-def weighted_bce(y_true, y_pred):
-    weights = tensorflow.constant(class_weights, dtype=y_pred.dtype)
-    unweighted_losses = tensorflow.nn.sigmoid_cross_entropy_with_logits(y_true, y_pred)
-    weighted_losses = tensorflow.multiply(unweighted_losses, weights)
-    return tensorflow.reduce_mean(weighted_losses, axis=-1)
-
-
-def wasserstein_class_loss(y_true, y_pred):
-    # Convert one-hot encoded y_true to integers
-    y_true_int = tensorflow.cast(K.argmax(y_true, axis=-1), tensorflow.float32)
-
-    # Extract the relevant probabilities from y_pred
-    y_pred_relevant = K.sum(y_true * y_pred, axis=-1)
-
-    # Compute the Wasserstein distance
-    return K.mean(y_true_int * y_pred_relevant)
-
-
-def prepare_test_data(experiment_results, test_path="resource/test_0.2_sub_pop.csv"):
-    target_column = "Population code"
+def prepare_test_data(experiment_results, test_path="resource/test_0.2_super_pop.csv"):
+    target_column = "Superpopulation code"
 
     with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
         json_data = file.read()
@@ -333,6 +354,7 @@ def prepare_test_data(experiment_results, test_path="resource/test_0.2_sub_pop.c
     test_set = pd.read_csv(test_path)
     relevant_columns = get_relevant_columns(test_set, [SAMPLE_COLUMN_NAME, target_column])
     test_set = filter_samples_by_minimum_examples(10, test_set, target_column)
+    test_set = test_set.sample(frac=1, random_state=np.random.RandomState(seed=42))
     _, _, y_real = extract_y_column(class_to_id, test_set, target_column)
     y_real = tensorflow.argmax(y_real, axis=1)
     x_values = extract_x_values(test_set, relevant_columns, target_column)
@@ -379,12 +401,17 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     discriminator = build_discriminator(number_of_genotypes=number_of_genotypes, num_classes=num_classes, alph=alph,
                                         d_activation=d_activation)
 
-    if class_loss_function == "bce_with_penalty":
-        class_loss_function = bce_with_penalty
-    if class_loss_function == "f1_score_with_penalty":
-        class_loss_function = f1_score_with_penalty
-    if class_loss_function == "f1_score":
-        class_loss_function = f1_loss_score
+    if class_loss_function == "f1_loss_score_macro":
+        class_loss_function = f1_loss_score_macro
+    if class_loss_function == "f1_loss_score_micro":
+        class_loss_function = f1_loss_score_micro
+    if class_loss_function == "f1_loss_score_weighted":
+        class_loss_function = f1_loss_score_weighted
+    if class_loss_function == "f1_loss_score_samples":
+        class_loss_function = f1_loss_score_samples
+    if class_loss_function == "f1_loss_for_labels":
+        class_loss_function = f1_loss_for_labels
+
     discriminator.compile(optimizer=RMSprop(lr=d_learn), loss=[validation_loss_function, class_loss_function],
                           loss_weights=[1, class_loss_weights], metrics=['accuracy'])
     # Set discriminator to non-trainable
