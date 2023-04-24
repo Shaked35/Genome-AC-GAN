@@ -277,13 +277,12 @@ def plot_pca_comparisons(generator: Model, epoch_number: int, losses: list,
     plt.switch_backend('agg')
 
 
-def f1_loss_for_labels(y_true, y_pred):
-    return f1_loss_for_one_hot(y_true, y_pred, average='micro', rounded=True)
-
-
 def f1_loss_for_one_hot(y_true, y_pred, average, rounded=False):
     if rounded:
-        tmp_y_pred = tensorflow.round(y_pred)
+        tmp_y_pred = tensorflow.cast(tensorflow.equal(y_pred,
+                                                      tensorflow.reduce_max(y_pred, axis=1,
+                                                                            keepdims=True)),
+                                     tensorflow.float32)
     else:
         tmp_y_pred = y_pred
     precision, recall = calculate_precision_recall(tmp_y_pred, y_true)
@@ -308,6 +307,10 @@ def f1_loss_for_one_hot(y_true, y_pred, average, rounded=False):
         f1_samples = (2 * tp) / (2 * tp + fp + fn)
         return 1 - tensorflow.reduce_mean(f1_samples)
     return None
+
+
+def f1_loss_for_labels(y_true, y_pred):
+    return f1_loss_for_one_hot(y_true, y_pred, average='macro', rounded=True)
 
 
 def f1_loss_score_macro(y_true, y_pred):
