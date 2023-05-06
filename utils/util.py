@@ -16,7 +16,8 @@ from scipy.stats import pearsonr, linregress
 from sklearn.decomposition import PCA
 from tensorflow.python import enable_eager_execution
 from tensorflow.python.keras.utils.np_utils import to_categorical
-
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, \
+    cohen_kappa_score
 from utils.consts import *
 
 try:
@@ -351,25 +352,25 @@ def plotPCAsuperpose(pcdf, method, orderedCat, output_dir, colpal):
     plt.savefig(os.path.join(output_dir, "PCA_allel_compare_models_" + method + ".pdf"))
 
 
-def plotPCAdensity(pcdf, method, orderedCat, output_dir):
+def plotPCAdensity(pcdf, method, orderedCat, output_dir, levels=10):
     pdf = matplotlib.backends.backend_pdf.PdfPages(os.path.join(output_dir, "PCA_densities_compare_" + method + ".pdf"))
     g = sns.FacetGrid(pcdf, col="label", col_wrap=len(orderedCat), col_order=orderedCat)
-    g.map(sns.kdeplot, 'PC1', 'PC2', cmap="RdBu", cbar=True)  # Reds_d")
+    g.map(sns.kdeplot, 'PC1', 'PC2', cmap="RdBu", cbar=True, levels=levels)  # Reds_d")
     pdf.savefig()
     g = sns.FacetGrid(pcdf, col="label", col_wrap=len(orderedCat), col_order=orderedCat)
-    g.map(sns.kdeplot, 'PC3', 'PC4', cmap="Reds_d", cbar=True)
+    g.map(sns.kdeplot, 'PC3', 'PC4', cmap="Reds_d", cbar=True, levels=levels)
     pdf.savefig()
     g = sns.FacetGrid(pcdf, col="label", col_wrap=len(orderedCat), col_order=orderedCat)
-    g.map(sns.kdeplot, 'PC5', 'PC6', cmap="Reds_d", cbar=True)
+    g.map(sns.kdeplot, 'PC5', 'PC6', cmap="Reds_d", cbar=True, levels=levels)
     pdf.savefig()
     pdf.close()
 
 
-def plotPCAallfigs(pcdf, method, orderedCat, output_dir, colpal):
+def plotPCAallfigs(pcdf, method, orderedCat, output_dir, colpal, levels):
     # plotPCAscatter(pcdf, method, orderedCat, output_dir)
     if method != 'independent_PCA':
         plotPCAsuperpose(pcdf, method, orderedCat, output_dir, colpal)
-    plotPCAdensity(pcdf, method, orderedCat, output_dir)
+    plotPCAdensity(pcdf, method, orderedCat, output_dir, levels)
 
 
 def computePCAdist(pcdf, method, output_dir, stat='wasserstein', reg=1e-3):
@@ -557,11 +558,13 @@ def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
     relevant_columns = get_relevant_columns(real_data, [SAMPLE_COLUMN_NAME, target_column])
     real_data = real_data[relevant_columns]
     real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
+    # real_data = real_data.sample(frac=1, random_state=np.random.RandomState(seed=42))
     # Extract the features into a separate matrix
-    X = real_data[list(set(relevant_columns) - {SAMPLE_COLUMN_NAME, target_column})].values
-    x_train = extract_x_values(real_data, relevant_columns, target_column)
+    relevant_columns_without_target = [x for x in relevant_columns if x not in [SAMPLE_COLUMN_NAME, target_column]]
+    X = real_data[relevant_columns_without_target].values
     class_to_id = order_class_ids(X, real_data, target_column)
     class_id_to_counts, uniques, y_train = extract_y_column(class_to_id, real_data, target_column)
+    x_train = extract_x_values(real_data, relevant_columns, target_column)
     return (x_train, y_train), class_id_to_counts, len(uniques), class_to_id
 
 
@@ -574,7 +577,9 @@ def extract_y_column(class_to_id, real_data, target_column):
 
 
 def extract_x_values(real_data, relevant_columns, target_column):
-    x_train = real_data[list(set(relevant_columns) - {SAMPLE_COLUMN_NAME, target_column, "class_id"})]
+    relevant_columns_without_target = [x for x in relevant_columns if
+                                       x not in [SAMPLE_COLUMN_NAME, target_column, "class_id"]]
+    x_train = real_data[relevant_columns_without_target]
     x_train = x_train.values
     return x_train
 
@@ -638,25 +643,40 @@ def init_analysis_args(output_dir, models_to_test):
     return model_name_to_input_file, model_name_to_color, color_palette
 
 
-def load_analysis_data(number_of_samples: int, model_name_to_input_file: dict):
+def load_analysis_data(model_name_to_input_file: dict):
     transformations = {'to_minor_encoding': False, 'min_af': 0, 'max_af': 1}
 
     datasets, model_keep_all_snps, sample_info = dict(), dict(), dict()
+    number_of_samples = 0
     for model_name, file_path in model_name_to_input_file.items():
         print(model_name, "loaded from", file_path)
-        model_sequences = pd.read_csv(file_path, sep=' ', header=None)
-        if 'GS-AC-GAN' in model_name:
-            model_sequences.columns = [column if column == 0 else column + 1 for column in model_sequences.columns]
-            model_sequences.insert(0, 1, [f"AG{sample_id}" for sample_id in range(model_sequences.shape[0])])
-        if model_sequences.shape[1] == 808:  # special case for a specific file that had an extra empty column
-            model_sequences = model_sequences.drop(columns=model_sequences.columns[-1])
-        if model_sequences.shape[0] > number_of_samples:
-            model_sequences = model_sequences.drop(
-                index=np.sort(
-                    np.random.choice(np.arange(model_sequences.shape[0]),
-                                     size=model_sequences.shape[0] - number_of_samples,
-                                     replace=False))
-            )
+        if file_path.endswith('.csv'):
+            model_sequences = pd.read_csv(file_path)
+            columns = get_relevant_columns(model_sequences, model_sequences.columns[:2])
+            model_sequences = model_sequences[columns]
+            columns = [int(i) for i in columns]
+            model_sequences.columns = columns
+            number_of_samples = len(model_sequences)
+
+        else:
+            model_sequences = pd.read_csv(file_path, sep=' ', header=None)
+            if 'Genome-AC-GAN' in model_name:
+                model_sequences.columns = [column if column == 0 else column + 1 for column in model_sequences.columns]
+                model_sequences.insert(0, 1, [f"AG{sample_id}" for sample_id in range(model_sequences.shape[0])])
+            if model_sequences.shape[1] == 808:  # special case for a specific file that had an extra empty column
+                model_sequences = model_sequences.drop(columns=model_sequences.columns[-1])
+            if model_sequences.shape[0] > number_of_samples:
+                model_sequences = model_sequences.drop(
+                    index=np.sort(
+                        np.random.choice(np.arange(model_sequences.shape[0]),
+                                         size=model_sequences.shape[0] - number_of_samples,
+                                         replace=False))
+                )
+            if model_name == 'Old Model':
+                model_sequences = model_sequences.drop(columns=list(model_sequences.columns)[-1], axis=1)
+                model_sequences.columns = [column + 2 for column in list(model_sequences.columns)]
+                model_sequences.insert(loc=0, column=0, value="none")
+                model_sequences.insert(loc=1, column=1, value='none')
         # overwrite file first column to set the label name chosen in infiles (eg GAN, etc):
         model_sequences[0] = model_name
         sample_info[model_name] = pd.DataFrame({'label': model_sequences[0], 'ind': model_sequences[1]})
@@ -669,7 +689,7 @@ def load_analysis_data(number_of_samples: int, model_name_to_input_file: dict):
         print(model_name, datasets[model_name].shape)
     extra_sample_info = pd.DataFrame(np.concatenate(list(sample_info.values())), columns=['label', 'id'])
     print("Dictionary of datasets:", len(datasets))
-    return extra_sample_info, sample_info, datasets, transformations, model_keep_all_snps
+    return extra_sample_info, sample_info, datasets, transformations, model_keep_all_snps, number_of_samples
 
 
 def build_allele_frequency(datasets):
@@ -692,3 +712,124 @@ def build_allele_frequency(datasets):
     models = datasets.keys()
     is_fixed = np.vstack([is_fixed_dic[cat] for cat in models]).any(axis=0)
     return sum_alleles_by_position, allele_frequency, is_fixed
+
+
+def plot_confusion_matrix(y_real, y_pred, class_names, output_dir):
+    num_classes = len(class_names)
+    cm = np.zeros((num_classes, num_classes))
+    # create a confusion matrix using numpy
+    for i in range(len(y_real)):
+        cm[int(y_real[i]), int(y_pred[i])] += 1
+    # plot a heat map of the confusion matrix
+    fig, ax = plt.subplots(figsize=(8, 8))
+    im = ax.imshow(cm, cmap='RdYlGn')
+    ax.set_xticks(np.arange(num_classes))
+    ax.set_yticks(np.arange(num_classes))
+    ax.set_xticklabels(class_names, fontsize=7)
+    ax.set_yticklabels(class_names, fontsize=7)
+    ax.set_xlabel('Predicted label')
+    ax.set_ylabel('True label')
+    for i in range(num_classes):
+        for j in range(num_classes):
+            _ = ax.text(j, i, int(cm[i, j]),
+                        ha='center', va='center', color='w')
+    plt.title('Confusion matrix')
+    plt.savefig(os.path.join(output_dir, CONFUSION_MATRIX_FILE))
+
+
+def compute_metrics(y_real, y_pred):
+    # Compute accuracy
+    accuracy = accuracy_score(y_real, y_pred)
+
+    # Compute precision, recall, and F1-score
+    precision = precision_score(y_real, y_pred, average='macro')
+    recall = recall_score(y_real, y_pred, average='macro')
+    f1 = f1_score(y_real, y_pred, average='macro')
+
+    # Compute ROC curve and AUC
+    fpr, tpr, thresholds = roc_curve(y_real, y_pred, pos_label=1)
+    roc_auc = auc(fpr, tpr)
+
+    # Compute Jaccard similarity coefficient
+    intersection = len(set(y_real) & set(y_pred))
+    jaccard = intersection / (len(y_real) + len(y_pred) - intersection)
+
+    # Compute and print results
+    results = {
+        "Accuracy": accuracy,
+        "Precision": precision,
+        "Recall": recall,
+        "F1-score": f1,
+        "ROC AUC": roc_auc,
+        "Jaccard Similarity Coefficient": jaccard
+    }
+
+    return results
+
+
+def plot_classifications_confusion_matrix(file_paths, output_dir, experiments_rename, prefix=""):
+    # Create an empty list to store the confusion matrices and kappa scores
+    cm_list = []
+    kappa_list = []
+
+    # Loop through each file path
+    for i, path in enumerate(file_paths):
+        # Read in the CSV file
+        data = pd.read_csv(path)
+
+        # Extract the actual and predicted population values from the dataframe
+        actual_pop = data['class_name_real'].values
+        predicted_pop = data['class_name_pred'].values
+
+        # Get the unique classes
+        classes = np.unique(actual_pop)
+
+        # Create the confusion matrix
+        cm = confusion_matrix(actual_pop, predicted_pop, labels=classes)
+
+        # Calculate Cohen's kappa score
+        kappa = cohen_kappa_score(actual_pop, predicted_pop)
+
+        # Append the confusion matrix and kappa score to the list
+        cm_list.append(cm)
+        kappa_list.append(kappa)
+
+    # Calculate the number of rows and columns for the subplots
+    n_plots = len(file_paths)
+    n_cols = min(2, n_plots)
+    n_rows = int(np.ceil(n_plots / n_cols))
+
+    # Create the subplots
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(10, 5 * n_rows))
+    fig.suptitle('Confusion Matrix Comparison')
+
+    # Flatten the axes array for indexing
+    axes = axes.flatten()
+
+    # Loop through each confusion matrix and subplot
+    for i, (cm, kappa) in enumerate(zip(cm_list, kappa_list)):
+        ax = axes[i]
+        im = ax.imshow(cm, cmap=plt.cm.Blues)
+        ax.set_title(f'{experiments_rename[i]}\nKappa Score: {kappa:.2f}')
+        ax.set_xlabel('Predicted Label')
+        ax.set_ylabel('True Label')
+        ax.set_xticks(np.arange(len(classes)))
+        ax.set_yticks(np.arange(len(classes)))
+        ax.set_xticklabels(classes)
+        ax.set_yticklabels(classes)
+
+        # Add a colorbar
+        fig.colorbar(im, ax=ax, shrink=0.6)
+
+        # Add the confusion matrix values as text annotations
+        for j in range(len(classes)):
+            for k in range(len(classes)):
+                text = ax.text(k, j, cm[j, k], ha='center', va='center', color='white')
+
+    # Hide any unused subplots
+    for i in range(n_plots, n_rows * n_cols):
+        axes[i].axis('off')
+
+    # Show the plot
+    plt.savefig(os.path.join(output_dir, prefix + "compare_confusion_matrix.jpg"))
+    plt.show()

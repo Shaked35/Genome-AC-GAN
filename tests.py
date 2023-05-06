@@ -97,14 +97,19 @@ class Test(TestCase):
         self.assertLess(len(real_data_population), len(real_data_super_population))
 
     def test_f1_score(self):
-        y_true = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
-        y_pred1 = np.array([[0.1, 0.1, 0.9], [0.1, 0.1, 0.9], [0.1, 0.1, 0.9]])
-        y_pred2 = np.array([[0.1, 0.9, 0.1], [0.1, 0.9, 0.1], [0.1, 0.1, 0.9]])
-        s_score1 = f1_score(y_true, tensorflow.round(y_pred1), average='micro')
-        s_score2 = f1_score(y_true, tensorflow.round(y_pred2), average='micro')
-        s_score3 = f1_loss_score(y_true, y_pred1)
-        s_score4 = f1_loss_score(y_true, y_pred2)
-        s_score5 = f1_loss_score(y_true, tensorflow.round(y_pred1))
-        s_score6 = f1_loss_score(y_true, tensorflow.round(y_pred2))
-        # s_score6 = binary_crossentropy(y_true, y_pred2)
-        print(s_score1, s_score2, s_score3, s_score4, s_score5, s_score6)
+        y_true = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
+        y_pred1 = np.array([[0.1, 0.1, 0.9], [0.1, 0.1, 0.9], [0.1, 0.1, 0.9], [0.1, 0.1, 0.9], [0.1, 0.1, 0.9]])
+        y_pred2 = np.array([[0.234, 0.6234, 0.21], [0.239, 0.5235, 0.31], [0.1123, 0.9234, 0.00234], [0.3124, 0.752, 0.0923], [0.123, 0.0034, 0.9]])
+        s_score1 = f1_loss_score(y_true, y_pred1, average='micro')
+        s_score2 = f1_loss_score(y_true, y_pred2, average='micro')
+        s_score3 = f1_loss_score(y_true, y_pred1, average='macro')
+        s_score4 = f1_loss_score(y_true, y_pred2, average='macro')
+        s_score7 = f1_loss_score(y_true, y_pred1, average='weighted')
+        s_score8 = f1_loss_score(y_true, y_pred2, average='weighted')
+        s_score9 = f1_loss_score(y_true, y_pred1, average='samples')
+        s_score10 = f1_loss_score(y_true, y_pred2, average='samples')
+
+        print(f"score micro:{s_score1}, {s_score2}\n"
+              f"score macro: {s_score3}, {s_score4}\n"
+              f"score weighted: {s_score7},  {s_score8}\n"
+              f"score samples: {s_score9},  {s_score10}\n")
