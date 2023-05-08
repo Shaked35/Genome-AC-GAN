@@ -1,4 +1,6 @@
 import copy
+import json
+import math
 import os
 import os.path
 import random
@@ -8,6 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import tensorflow
+from tensorflow.python.keras.models import Model
 from matplotlib import cm as cm
 from matplotlib import pyplot as plt
 from scipy import stats as scs
@@ -833,3 +836,168 @@ def plot_classifications_confusion_matrix(file_paths, output_dir, experiments_re
     # Show the plot
     plt.savefig(os.path.join(output_dir, prefix + "compare_confusion_matrix.jpg"))
     plt.show()
+
+
+def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path, id_to_class,
+                                  class_metric_results, epoch):
+    shuffled_dataset = tensorflow.data.Dataset.from_tensor_slices(test_dataset).shuffle(
+        test_dataset[0].shape[0]).batch(test_dataset[0].shape[0], drop_remainder=True)
+    for x_batch_real, y_batch_real in shuffled_dataset:
+        r_f, class_predictions = discriminator.predict_on_batch(x_batch_real)
+        y_pred = tensorflow.argmax(class_predictions, axis=1)
+        class_classifier_results = pd.DataFrame({"class_pred": np.array(y_pred), "class_real": np.array(y_batch_real),
+                                                 "real_fake_pred": r_f.flatten()})
+        class_classifier_results["class_name_real"] = class_classifier_results["class_real"].replace(id_to_class)
+        class_classifier_results["class_name_pred"] = class_classifier_results["class_pred"].replace(id_to_class)
+        class_classifier_results.to_csv(
+            os.path.join(experiment_results_path, "discriminator_pred_on_test.csv"), index=False)
+        class_names = list(set(id_to_class.values()))
+        plot_confusion_matrix(class_classifier_results["class_real"],
+                              class_classifier_results["class_pred"], class_names,
+                              experiment_results_path)
+
+        row_results = compute_metrics(class_classifier_results["class_real"],
+                                      class_classifier_results["class_pred"])
+        row_results["epoch"] = epoch
+        row_results = pd.DataFrame([row_results])
+        if class_metric_results is None:
+            class_metric_results = pd.DataFrame(row_results)
+        else:
+            class_metric_results = pd.concat([class_metric_results, row_results])
+        class_metric_results.to_csv(os.path.join(experiment_results_path, DISCRIMINATOR_METRICS_FILE),
+                                    index=False)
+        return class_metric_results
+
+
+def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size, num_classes,
+                          sequence_results_path):
+    generated_genomes_total = []
+    for class_id, number_of_sequences in class_id_to_counts.items():
+        fake_labels_batch = tensorflow.one_hot(np.full(shape=(number_of_sequences,), fill_value=class_id),
+                                               depth=num_classes)
+        latent_samples = np.random.normal(loc=0, scale=1, size=(number_of_sequences, latent_size))
+        generated_genomes = generator.predict([latent_samples, fake_labels_batch])
+        generated_genomes[generated_genomes < 0] = 0
+        generated_genomes = np.rint(generated_genomes)
+        tmp_generated_genomes_df = pd.DataFrame(generated_genomes)
+        tmp_generated_genomes_df = tmp_generated_genomes_df.astype(int)
+        tmp_generated_genomes_df.insert(loc=0, column='Type', value=f"Fake_{id_to_class[class_id]}")
+        generated_genomes_total.append(tmp_generated_genomes_df)
+    generated_genomes_df = pd.concat(generated_genomes_total)
+    generated_genomes_df.to_csv(os.path.join(sequence_results_path, f"{epoch_number}_genotypes.hapt"), sep=" ",
+                                header=False,
+                                index=False)
+    return generated_genomes_df
+
+
+def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0.2_super_pop.csv",
+                                  target_column="Superpopulation code",
+                                  from_generated=False):
+    with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
+        json_data = file.read()
+
+    class_to_id = json.loads(json_data)
+    if from_generated:
+        test_set = pd.read_csv(test_path, sep=' ', header=None)
+        pop = test_set[0]
+        test_set = test_set.drop(0, axis=1)
+        test_set.columns = [genotype for genotype in range(test_set.shape[1])]
+        test_set[target_column] = pop.str.replace('Fake_', "")
+    else:
+        test_set = pd.read_csv(test_path)
+    relevant_columns = get_relevant_columns(test_set, [SAMPLE_COLUMN_NAME, target_column])
+    test_set = filter_samples_by_minimum_examples(10, test_set, target_column)
+    test_set = test_set.sample(frac=1, random_state=np.random.RandomState(seed=42))
+    _, _, y_real = extract_y_column(class_to_id, test_set, target_column)
+    y_real = tensorflow.argmax(y_real, axis=1)
+    x_values = extract_x_values(test_set, relevant_columns, target_column)
+    return x_values, y_real
+
+
+def plot_pca_comparisons(generator: Model, epoch_number: int, losses: list,
+                         class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
+                         dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
+    # Create AGs
+    generated_genomes_df = generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size,
+                                                 num_classes, sequence_results_path)
+    plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
+
+    fig, ax = plt.subplots()
+    plt.plot(np.array([losses]).T[0], label='Discriminator')
+    plt.plot(np.array([losses]).T[1], label='Generator')
+    plt.title("Training Losses")
+    plt.legend()
+    fig.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_loss.pdf'), format='pdf')
+    # Make PCA
+    real_sequences = dataset[0].copy()
+    real_sequences[real_sequences < 0] = 0
+    real_sequences = np.rint(real_sequences)
+    real_sequences = pd.DataFrame(real_sequences)
+    real_sequences['Type'] = real_class_names
+    df_all_pca = pd.concat([real_sequences, generated_genomes_df])
+    pca = PCA(n_components=2)
+    PCs = pca.fit_transform(df_all_pca.drop(['Type'], axis=1))
+    PCs_df = pd.DataFrame(data=PCs, columns=['PC1', 'PC2'])
+    PCs_df['Class'] = list(df_all_pca['Type'])
+    # Define the colors for real and fake points
+    real_color = 'blue'
+    fake_color = 'red'
+    # Define the populations
+    populations = list(id_to_class.values())
+    # Create a figure with multiple subplots
+    fig, axs = plt.subplots(nrows=math.ceil((len(populations) + 1) / 2), ncols=2,
+                            figsize=(16, len(populations) * 4))
+    # Loop over each population and plot the real and fake points separately
+    column_mod = 2
+    row = 0
+    alpha_color = 0.3
+    for i, pop in enumerate(populations):
+        # Get the indices of the real and fake points for this population
+        real_idx = (PCs_df['Class'] == f'Real_{pop}')
+        fake_idx = (PCs_df['Class'] == f'Fake_{pop}')
+
+        # Get the PCA values for the real and fake points
+        real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
+        fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
+
+        # Plot the real and fake points in separate subplots
+        axs[row, column_mod % 2].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
+                                         alpha=alpha_color)
+        axs[row, column_mod % 2].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
+                                         alpha=alpha_color)
+        axs[row, column_mod % 2].set_xlabel('PC1')
+        axs[row, column_mod % 2].set_ylabel('PC2')
+        axs[row, column_mod % 2].set_title(f'{pop} - Real vs Fake')
+        axs[row, column_mod % 2].legend()
+        column_mod += 1
+        row += 1 if column_mod % 2 == 0 else 0
+    # Get the indices of the real and fake points for this population
+    real_idx = PCs_df.index[PCs_df['Class'].str.contains('Real')]
+    fake_idx = PCs_df.index[PCs_df['Class'].str.contains('Fake')]
+    # Get the PCA values for the real and fake points
+    real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
+    fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
+    # Plot the real and fake points together in another subplot
+    axs[row, 1].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
+                        alpha=alpha_color)
+    axs[row, 1].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
+                        alpha=alpha_color)
+    axs[row, 1].set_xlabel('PC1')
+    axs[row, 1].set_ylabel('PC2')
+    axs[row, 1].set_title(f'All - Real vs Fake')
+    axs[row, 1].legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_pca.pdf'), format='pdf')
+    plt.close()
+    plt.switch_backend('agg')
+
+
+def save_models(generator: Model, discriminator: Model, acgan: Model, experiment_results_path: str):
+    discriminator.trainable = False
+    acgan.save(os.path.join(experiment_results_path, "acgan"))
+    acgan.save_weights(os.path.join(experiment_results_path, "acgan_weights"))
+    discriminator.trainable = True
+    generator.save(os.path.join(experiment_results_path, "generator"))
+    generator.save_weights(os.path.join(experiment_results_path, "generator_weights"))
+    discriminator.save(os.path.join(experiment_results_path, "discriminator"))
+    discriminator.save_weights(os.path.join(experiment_results_path, "discriminator_weights"))

@@ -1,6 +1,4 @@
 import argparse
-import json
-import math
 import os.path
 from pathlib import Path
 
@@ -10,25 +8,12 @@ from keras.layers import BatchNormalization
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout
 from tensorflow.python.keras.metrics import CategoricalAccuracy
-from tensorflow.python.keras.models import Sequential, Model
+from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
-from tensorflow.python.ops.numpy_ops import array
 
 from utils.util import *
 
 plt.switch_backend('agg')
-class_weights = []
-
-
-def save_mod(generator: Model, discriminator: Model, acgan: Model, experiment_results_path: str):
-    discriminator.trainable = False
-    acgan.save(os.path.join(experiment_results_path, "acgan"))
-    acgan.save_weights(os.path.join(experiment_results_path, "acgan_weights"))
-    discriminator.trainable = True
-    generator.save(os.path.join(experiment_results_path, "generator"))
-    generator.save_weights(os.path.join(experiment_results_path, "generator_weights"))
-    discriminator.save(os.path.join(experiment_results_path, "discriminator"))
-    discriminator.save_weights(os.path.join(experiment_results_path, "discriminator_weights"))
 
 
 # Make generator
@@ -133,20 +118,16 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
 
         losses.append((np.average(avg_d_loss), np.average(avg_g_loss)))
 
-        # real_fake, class_predictions = discriminator.predict_on_batch([x_batch_real_with_noise])
-        # y_pred = tensorflow.argmax(class_predictions, axis=1)
-        # uniques_test, counts_test = np.unique(y_pred, return_counts=True)
-        # class_id_to_counts_test = dict(zip(uniques_test, counts_test))
-        # print("class_id_to_counts: ", class_id_to_counts_test)
-
         print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (
             e, epochs, np.average(avg_d_loss), np.average(avg_g_loss)))
         if e % save_number == 0 or e == epochs:
-            # class_metric_results = save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path,
-            #                                                      id_to_class, class_metric_results, e)
-            # Save models
-            save_mod(acgan=acgan, generator=generator, discriminator=discriminator,
-                     experiment_results_path=experiment_results_path)
+            if test_dataset is not None:
+                class_metric_results = save_discriminator_class_pred(discriminator, test_dataset,
+                                                                     experiment_results_path, id_to_class,
+                                                                     class_metric_results, e)
+
+            save_models(acgan=acgan, generator=generator, discriminator=discriminator,
+                        experiment_results_path=experiment_results_path)
 
             plot_pca_comparisons(generator=generator, epoch_number=e,
                                  losses=losses, class_id_to_counts=class_id_to_counts,
@@ -154,196 +135,6 @@ def train(batch_size: int, epochs: int, dataset: tuple, first_epoch: int, num_cl
                                  latent_size=latent_size, num_classes=num_classes, dataset=dataset,
                                  id_to_class=id_to_class, real_class_names=real_class_names,
                                  sequence_results_path=sequence_results_path)
-
-
-def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path, id_to_class,
-                                  class_metric_results, epoch):
-    shuffled_dataset = tensorflow.data.Dataset.from_tensor_slices(test_dataset).shuffle(
-        test_dataset[0].shape[0]).batch(test_dataset[0].shape[0], drop_remainder=True)
-    for x_batch_real, y_batch_real in shuffled_dataset:
-        r_f, class_predictions = discriminator.predict_on_batch(x_batch_real)
-        y_pred = tensorflow.argmax(class_predictions, axis=1)
-        class_classifier_results = pd.DataFrame({"class_pred": np.array(y_pred), "class_real": np.array(y_batch_real),
-                                                 "real_fake_pred": r_f.flatten()})
-        class_classifier_results["class_name_real"] = class_classifier_results["class_real"].replace(id_to_class)
-        class_classifier_results["class_name_pred"] = class_classifier_results["class_pred"].replace(id_to_class)
-        class_classifier_results.to_csv(
-            os.path.join(experiment_results_path, "discriminator_pred_on_test.csv"), index=False)
-        class_names = list(set(id_to_class.values()))
-        plot_confusion_matrix(class_classifier_results["class_real"],
-                              class_classifier_results["class_pred"], class_names,
-                              experiment_results_path)
-
-        row_results = compute_metrics(class_classifier_results["class_real"],
-                                      class_classifier_results["class_pred"])
-        row_results["epoch"] = epoch
-        row_results = pd.DataFrame([row_results])
-        if class_metric_results is None:
-            class_metric_results = pd.DataFrame(row_results)
-        else:
-            class_metric_results = pd.concat([class_metric_results, row_results])
-        class_metric_results.to_csv(os.path.join(experiment_results_path, DISCRIMINATOR_METRICS_FILE),
-                                    index=False)
-        return class_metric_results
-
-
-def plot_pca_comparisons(generator: Model, epoch_number: int, losses: list,
-                         class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
-                         dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
-    # Create AGs
-    generated_genomes_total = []
-    for class_id, number_of_sequences in class_id_to_counts.items():
-        fake_labels_batch = tensorflow.one_hot(np.full(shape=(number_of_sequences,), fill_value=class_id),
-                                               depth=num_classes)
-        latent_samples = np.random.normal(loc=0, scale=1, size=(number_of_sequences, latent_size))
-        generated_genomes = generator.predict([latent_samples, fake_labels_batch])
-        generated_genomes[generated_genomes < 0] = 0
-        generated_genomes = np.rint(generated_genomes)
-        tmp_generated_genomes_df = pd.DataFrame(generated_genomes)
-        tmp_generated_genomes_df = tmp_generated_genomes_df.astype(int)
-        tmp_generated_genomes_df.insert(loc=0, column='Type', value=f"Fake_{id_to_class[class_id]}")
-        generated_genomes_total.append(tmp_generated_genomes_df)
-    generated_genomes_df = pd.concat(generated_genomes_total)
-    generated_genomes_df.to_csv(os.path.join(sequence_results_path, f"{epoch_number}_genotypes.hapt"), sep=" ",
-                                header=False,
-                                index=False)
-    plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
-
-    fig, ax = plt.subplots()
-    plt.plot(np.array([losses]).T[0], label='Discriminator')
-    plt.plot(np.array([losses]).T[1], label='Generator')
-    plt.title("Training Losses")
-    plt.legend()
-    fig.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_loss.pdf'), format='pdf')
-    # Make PCA
-    real_sequences = dataset[0].copy()
-    real_sequences[real_sequences < 0] = 0
-    real_sequences = np.rint(real_sequences)
-    real_sequences = pd.DataFrame(real_sequences)
-    real_sequences['Type'] = real_class_names
-    df_all_pca = pd.concat([real_sequences, generated_genomes_df])
-    pca = PCA(n_components=2)
-    PCs = pca.fit_transform(df_all_pca.drop(['Type'], axis=1))
-    PCs_df = pd.DataFrame(data=PCs, columns=['PC1', 'PC2'])
-    PCs_df['Class'] = list(df_all_pca['Type'])
-    # Define the colors for real and fake points
-    real_color = 'blue'
-    fake_color = 'red'
-    # Define the populations
-    populations = list(id_to_class.values())
-    # Create a figure with multiple subplots
-    fig, axs = plt.subplots(nrows=math.ceil((len(populations) + 1) / 2), ncols=2,
-                            figsize=(16, len(populations) * 4))
-    # Loop over each population and plot the real and fake points separately
-    column_mod = 2
-    row = 0
-    alpha_color = 0.3
-    for i, pop in enumerate(populations):
-        # Get the indices of the real and fake points for this population
-        real_idx = (PCs_df['Class'] == f'Real_{pop}')
-        fake_idx = (PCs_df['Class'] == f'Fake_{pop}')
-
-        # Get the PCA values for the real and fake points
-        real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
-        fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
-
-        # Plot the real and fake points in separate subplots
-        axs[row, column_mod % 2].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
-                                         alpha=alpha_color)
-        axs[row, column_mod % 2].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
-                                         alpha=alpha_color)
-        axs[row, column_mod % 2].set_xlabel('PC1')
-        axs[row, column_mod % 2].set_ylabel('PC2')
-        axs[row, column_mod % 2].set_title(f'{pop} - Real vs Fake')
-        axs[row, column_mod % 2].legend()
-        column_mod += 1
-        row += 1 if column_mod % 2 == 0 else 0
-    # Get the indices of the real and fake points for this population
-    real_idx = PCs_df.index[PCs_df['Class'].str.contains('Real')]
-    fake_idx = PCs_df.index[PCs_df['Class'].str.contains('Fake')]
-    # Get the PCA values for the real and fake points
-    real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
-    fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
-    # Plot the real and fake points together in another subplot
-    axs[row, 1].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
-                        alpha=alpha_color)
-    axs[row, 1].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
-                        alpha=alpha_color)
-    axs[row, 1].set_xlabel('PC1')
-    axs[row, 1].set_ylabel('PC2')
-    axs[row, 1].set_title(f'All - Real vs Fake')
-    axs[row, 1].legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_pca.pdf'), format='pdf')
-    plt.close()
-    plt.switch_backend('agg')
-
-
-class AsymmetricLossOptimized(tensorflow.keras.losses.Loss):
-    def __init__(self, gamma_neg=4, gamma_pos=1, clip=0.05, eps=1e-8, disable_tf_autograph=False):
-        super(AsymmetricLossOptimized, self).__init__()
-
-        self.gamma_neg = gamma_neg
-        self.gamma_pos = gamma_pos
-        self.clip = clip
-        self.disable_tf_autograph = disable_tf_autograph
-        self.eps = eps
-
-        # Define variables for forward calculation
-        self.targets = None
-        self.anti_targets = None
-        self.xs_pos = None
-        self.xs_neg = None
-        self.asymmetric_w = None
-        self.loss = None
-
-    def __call__(self, y_true, y_pred):
-        # Convert y_true to float32 and y_pred to logits
-        y_true = tensorflow.cast(y_true, tensorflow.float32)
-        y_pred = tensorflow.convert_to_tensor(y_pred)
-
-        self.targets = y_true
-        self.anti_targets = 1 - y_true
-
-        # Calculating Probabilities
-        self.xs_pos = tensorflow.sigmoid(y_pred)
-        self.xs_neg = 1.0 - self.xs_pos
-
-        # Asymmetric Clipping
-        if self.clip is not None and self.clip > 0:
-            self.xs_neg = tensorflow.clip_by_value(self.xs_neg + self.clip, clip_value_min=0, clip_value_max=1)
-
-        # Basic CE calculation
-        self.loss = self.targets * tensorflow.math.log(
-            tensorflow.clip_by_value(self.xs_pos, clip_value_min=self.eps, clip_value_max=1))
-        self.loss += self.anti_targets * tensorflow.math.log(
-            tensorflow.clip_by_value(self.xs_neg, clip_value_min=self.eps, clip_value_max=1))
-
-        # Asymmetric Focusing
-        if self.gamma_neg > 0 or self.gamma_pos > 0:
-            if self.disable_tf_autograph:
-                tensorflow.autograph.experimental.set_loop_options(
-                    shape_invariants=[(self.xs_pos, tensorflow.TensorShape(None)),
-                                      (self.xs_neg, tensorflow.TensorShape(None)),
-                                      (self.asymmetric_w, tensorflow.TensorShape(None)),
-                                      (self.loss, tensorflow.TensorShape(None))])
-            self.xs_pos = self.xs_pos * self.targets
-            self.xs_neg = self.xs_neg * self.anti_targets
-            self.asymmetric_w = tensorflow.pow(1 - self.xs_pos - self.xs_neg,
-                                               self.gamma_pos * self.targets + self.gamma_neg * self.anti_targets)
-            self.loss *= self.asymmetric_w
-
-        return -tensorflow.reduce_sum(self.loss)
-
-
-def f1_loss_for_one_hot(y_true, y_pred, rounded=False, threshold=0.0):
-    precision, recall = calculate_precision_recall(y_pred=y_pred, y_true=y_true, rounded=rounded, threshold=threshold)
-    f1 = 2 * precision * recall / (precision + recall + tensorflow.keras.backend.epsilon())
-    negative_true = tensorflow.where(y_true > 0.0, tensorflow.zeros_like(y_pred),
-                                     tensorflow.ones_like(y_pred))
-    penalty_wrong_classes = tensorflow.reduce_sum(tensorflow.cast(negative_true * y_pred,
-                                                                  dtype=tensorflow.float32))
-    return 1 - f1 + penalty_wrong_classes
 
 
 def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_LCE):
@@ -357,68 +148,11 @@ def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_
     return Poly1
 
 
-def f1_loss_score_rounded(y_true, y_pred):
-    return f1_loss_for_one_hot(y_true, y_pred, rounded=True, threshold=0.15)
-
-
-def f1_loss_score_macro(y_true, y_pred):
-    return f1_loss_for_one_hot(y_true, y_pred, rounded=False)
-
-
-def calculate_precision_recall(y_pred, y_true, threshold, rounded):
-    # sum of all predicted values which are in the same position as real values
-    true_positives = tensorflow.reduce_sum(tensorflow.cast(y_true * y_pred, dtype=tensorflow.float32))
-    if rounded:
-        # class will be considered to be above threshold and will be rounded to 1
-        predicted_as_class = tensorflow.where(y_pred > threshold, tensorflow.ones_like(y_pred),
-                                              tensorflow.zeros_like(y_pred))
-    else:
-        # class will be any positive predictions but without rounded
-        predicted_as_class = y_pred
-    predicted_positives = tensorflow.reduce_sum(predicted_as_class)
-    actual_positives = tensorflow.reduce_sum(tensorflow.cast(y_true, dtype=tensorflow.float32))
-    precision = true_positives / predicted_positives
-    recall = true_positives / actual_positives
-    return precision, recall
-
-
-def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0.2_super_pop.csv",
-                                  target_column="Superpopulation code",
-                                  from_generated=False):
-    with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
-        json_data = file.read()
-
-    class_to_id = json.loads(json_data)
-    if from_generated:
-        test_set = pd.read_csv(test_path, sep=' ', header=None)
-        pop = test_set[0]
-        test_set = test_set.drop(0, axis=1)
-        test_set.columns = [genotype for genotype in range(test_set.shape[1])]
-        test_set[target_column] = pop.str.replace('Fake_', "")
-    else:
-        test_set = pd.read_csv(test_path)
-    relevant_columns = get_relevant_columns(test_set, [SAMPLE_COLUMN_NAME, target_column])
-    test_set = filter_samples_by_minimum_examples(10, test_set, target_column)
-    test_set = test_set.sample(frac=1, random_state=np.random.RandomState(seed=42))
-    _, _, y_real = extract_y_column(class_to_id, test_set, target_column)
-    y_real = tensorflow.argmax(y_real, axis=1)
-    x_values = extract_x_values(test_set, relevant_columns, target_column)
-    return x_values, y_real
-
-
-# define a function to calculate class weights based on inverse frequency
-def set_class_weights(y):
-    n_samples = len(y)
-    n_classes = y.shape[1]
-    class_counts = np.sum(y, axis=0)
-    for i in range(n_classes):
-        class_weights.append((n_samples - class_counts[i]) / class_counts[i])
-
-
 def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path: str, latent_size: int, alph: float,
          g_learn: float, d_learn: float, epochs: int, batch_size: int, class_loss_weights: float, save_number: int,
          minimum_samples: int, first_epoch: int, target_column: str, sequence_results_path: str, d_activation: str,
-         class_loss_function: str, validation_loss_function: str, without_extra_data: bool):
+         class_loss_function: str, validation_loss_function: str, without_extra_data: bool,
+         test_discriminator_classifier: bool):
     K.clear_session()
     init_gpus()
     target_column = " ".join(target_column.split("_"))
@@ -427,7 +161,6 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                                                                          target_column=target_column,
                                                                          minimum_samples=minimum_samples,
                                                                          without_extra_data=without_extra_data)
-    set_class_weights(dataset[1])
     # save class id map
     with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
         json.dump(class_to_id, f)
@@ -446,14 +179,6 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     discriminator = build_discriminator(number_of_genotypes=number_of_genotypes, num_classes=num_classes, alph=alph,
                                         d_activation=d_activation)
 
-    if class_loss_function == "f1_loss_score_macro":
-        class_loss_function = f1_loss_score_macro
-    if class_loss_function == "f1_loss_score_rounded":
-        class_loss_function = f1_loss_score_rounded
-    if class_loss_function == "f1_score_from_confusion_matrix":
-        class_loss_function = f1_score_from_confusion_matrix
-    if class_loss_function == "asymmetric_loss_optimized":
-        class_loss_function = AsymmetricLossOptimized(gamma_neg=4, gamma_pos=1, clip=0.05, eps=1e-8)
     if class_loss_function == "categorical_accuracy":
         class_loss_function = CategoricalAccuracy()
     if class_loss_function == "polyloss_ce":
@@ -471,68 +196,12 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                   loss_weights=[1, class_loss_weights],
                   metrics=['accuracy'])
 
-    # test_dataset = prepare_test_data(experiment_results)
+    test_dataset = prepare_test_and_fake_dataset(experiment_results) if test_discriminator_classifier else None
     train(batch_size=batch_size, epochs=epochs, dataset=dataset, first_epoch=first_epoch, num_classes=num_classes,
           latent_size=latent_size, generator=generator, discriminator=discriminator, acgan=acgan,
           save_number=save_number, class_id_to_counts=class_id_to_counts,
           experiment_results_path=experiment_results_path, id_to_class=id_to_class, real_class_names=real_class_names,
-          sequence_results_path=sequence_results_path, test_dataset=None)
-
-
-def calculate_confusion(y_true, y_pred, threshold=0.2):
-    y_pred_binary = tensorflow.cast(tensorflow.greater(y_pred, threshold), tensorflow.int32)
-    y_true_binary = tensorflow.cast(tensorflow.greater(y_true, threshold), tensorflow.int32)
-    # Get the indices of the matching elements
-    matching_indices = tensorflow.where((y_true_binary == 1) & (y_pred_binary == 1))
-    # Count the number of matching elements
-    num_true_positives = tensorflow.cast(len(matching_indices), tensorflow.float32)
-
-    # Get the indices of the true_negatives
-    true_negatives_indices = tensorflow.where((y_true_binary == 0) & (y_pred_binary == 0))
-    # Count the number of non-matching elements
-    num_true_negatives = tensorflow.cast(len(true_negatives_indices), tensorflow.float32)
-    # Get the indices of the elements where y_pred is 1 but y_true is 0
-    false_positive_indices = tensorflow.where((y_true_binary == 0) & (y_pred_binary == 1))
-    # Count the number of false positives
-    num_false_positives = tensorflow.cast(len(false_positive_indices), tensorflow.float32)
-
-    # Get the indices of the elements where y_true is 1 but y_pred is 0
-    false_negative_indices = tensorflow.where((y_true_binary == 1) & (y_pred_binary == 0))
-    # Count the number of false negatives
-    num_false_negatives = tensorflow.cast(len(false_negative_indices), tensorflow.float32)
-
-    confusion_matrix_values = array(
-        [[num_true_positives, num_false_negatives], [num_false_positives, num_true_negatives]])
-
-    return tensorflow.stop_gradient(confusion_matrix_values)
-
-
-def f1_score_from_confusion_matrix(y_true, y_pred, average='macro'):
-    confusion_matrix = calculate_confusion(y_true, y_pred)
-    # Get true positives, false positives, and false negatives for each class
-    tn = confusion_matrix[0, 0]
-    fp = confusion_matrix[0, 1]
-    fn = confusion_matrix[1, 0]
-    tp = confusion_matrix[1, 1]
-
-    # Calculate precision, recall, and F1 score for each class
-    precision = tensorflow.cast(tp / (tp + fp), tensorflow.float32)
-    recall = tensorflow.cast(tp / (tp + fn), tensorflow.float32)
-    f1 = tensorflow.cast(2 * precision * recall / (precision + recall), tensorflow.float32)
-
-    # Calculate the F1 score based on the specified average method
-    if average == 'micro':
-        f1_score = tensorflow.reduce_sum((2 * tp) / (2 * tp + fp + fn))
-    elif average == 'macro':
-        f1_score = tensorflow.reduce_mean(f1)
-    elif average == 'weighted':
-        f1_score = tensorflow.reduce_sum((precision * tn + recall * tp) / (tn + fp + fn + tp))
-    elif average == 'samples':
-        f1_score = tensorflow.reduce_mean(f1)
-    else:
-        raise ValueError('Invalid average method: {}'.format(average))
-
-    return 1 - f1_score
+          sequence_results_path=sequence_results_path, test_dataset=test_dataset)
 
 
 def parse_args():
@@ -573,6 +242,8 @@ def parse_args():
                         help='loss function between different real/fake')
     parser.add_argument('--without_extra_data', type=bool, default=False,
                         help="don't need to load extra data")
+    parser.add_argument('--test_discriminator_classifier', type=bool, default=False,
+                        help="if you want to test the classifier during the training")
     return parser.parse_args()
 
 
@@ -605,4 +276,5 @@ if __name__ == '__main__':
          d_activation=args.d_activation,
          class_loss_function=args.class_loss_function,
          validation_loss_function=args.validation_loss_function,
-         without_extra_data=args.without_extra_data)
+         without_extra_data=args.without_extra_data,
+         test_discriminator_classifier=args.test_discriminator_classifier)
