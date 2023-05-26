@@ -625,15 +625,14 @@ def order_class_ids(X, real_data, target_column):
     return class_to_id
 
 
-def init_analysis_args(output_dir, models_to_test):
+def init_analysis_args(output_dir, models_to_data):
     print("* Loading data (short script sumstats)...")
     model_name_to_input_file = {model_name: f"../{data['path']}" for model_name, data in models_to_test.items()}
-    model_name_to_color = {model_name: data["color"] for model_name, data in models_to_test.items()}
+    model_name_to_color = {model_name: data["color"] for model_name, data in models_to_data.items()}
     color_palette = {key: model_name_to_color[key] for key in model_name_to_input_file.keys()}
     sns.set_palette(color_palette.values())
     print(color_palette)
     sns.set_palette(color_palette.values())
-    print(model_name_to_input_file.keys())
     sns.palplot(sns.color_palette())
     # set the seed so that the same real individual are subsampled (when needed)
     # to ensure consistency of the scores when adding a new model or a new sumstat
@@ -646,53 +645,6 @@ def init_analysis_args(output_dir, models_to_test):
     return model_name_to_input_file, model_name_to_color, color_palette
 
 
-def load_analysis_data(model_name_to_input_file: dict):
-    transformations = {'to_minor_encoding': False, 'min_af': 0, 'max_af': 1}
-
-    datasets, model_keep_all_snps, sample_info = dict(), dict(), dict()
-    number_of_samples = 0
-    for model_name, file_path in model_name_to_input_file.items():
-        print(model_name, "loaded from", file_path)
-        if file_path.endswith('.csv'):
-            model_sequences = pd.read_csv(file_path)
-            columns = get_relevant_columns(model_sequences, model_sequences.columns[:2])
-            model_sequences = model_sequences[columns]
-            columns = [int(i) for i in columns]
-            model_sequences.columns = columns
-            number_of_samples = len(model_sequences)
-
-        else:
-            model_sequences = pd.read_csv(file_path, sep=' ', header=None)
-            if 'Genome-AC-GAN' in model_name:
-                model_sequences.columns = [column if column == 0 else column + 1 for column in model_sequences.columns]
-                model_sequences.insert(0, 1, [f"AG{sample_id}" for sample_id in range(model_sequences.shape[0])])
-            if model_sequences.shape[1] == 808:  # special case for a specific file that had an extra empty column
-                model_sequences = model_sequences.drop(columns=model_sequences.columns[-1])
-            if model_sequences.shape[0] > number_of_samples:
-                model_sequences = model_sequences.drop(
-                    index=np.sort(
-                        np.random.choice(np.arange(model_sequences.shape[0]),
-                                         size=model_sequences.shape[0] - number_of_samples,
-                                         replace=False))
-                )
-            if model_name == 'Old Model':
-                model_sequences = model_sequences.drop(columns=list(model_sequences.columns)[-1], axis=1)
-                model_sequences.columns = [column + 2 for column in list(model_sequences.columns)]
-                model_sequences.insert(loc=0, column=0, value="none")
-                model_sequences.insert(loc=1, column=1, value='none')
-        # overwrite file first column to set the label name chosen in infiles (eg GAN, etc):
-        model_sequences[0] = model_name
-        sample_info[model_name] = pd.DataFrame({'label': model_sequences[0], 'ind': model_sequences[1]})
-        datasets[model_name] = np.array(model_sequences.loc[:, 2:].astype(int))
-
-        # transformations can be maf filtering, recoding into major=0/minor=1 format
-        if transformations is not None:
-            datasets[model_name], model_keep_all_snps[model_name] = datatransform(datasets[model_name],
-                                                                                  **transformations)
-        print(model_name, datasets[model_name].shape)
-    extra_sample_info = pd.DataFrame(np.concatenate(list(sample_info.values())), columns=['label', 'id'])
-    print("Dictionary of datasets:", len(datasets))
-    return extra_sample_info, sample_info, datasets, transformations, model_keep_all_snps, number_of_samples
 
 
 def build_allele_frequency(datasets):

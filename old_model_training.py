@@ -17,13 +17,13 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.optimizer_v2.adam import Adam
 from sklearn.decomposition import PCA
 
-output_folder = "experiment_results/old_model_80%"  # hapt format input file
+output_folder = "experiment_results/old_model_80%_10k"  # hapt format input file
 hapt_genotypes_path = 'resource/train_0.8_super_pop.csv'
 latent_size = 600  # size of noise input
 alph = 0.01  # alpha value for LeakyReLU
 g_learn = 0.0001  # generator learning rate
 d_learn = 0.0008  # discriminator learning rate
-epochs = 5001
+epochs = 10001
 batch_size = 256
 save_that = 50  # epoch interval for saving outputs
 target_column = "Superpopulation code"
@@ -114,7 +114,7 @@ for e in range(1, epochs + 1):
     if e % save_that == 0 or e == epochs:
         # Create AGs
         generated_genomes_total = []
-        for i in range(int(1800 / batch_size)):
+        for i in range(int(1200 / batch_size)):
             latent_samples = np.random.normal(loc=0, scale=1, size=(batch_size, latent_size))
             generated_genomes = generator.predict(latent_samples)
             generated_genomes[generated_genomes < 0] = 0
