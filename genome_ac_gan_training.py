@@ -16,7 +16,7 @@ from utils.util import *
 plt.switch_backend('agg')
 
 
-# Make generator
+# Make Generator Model
 def build_generator(latent_dim: int, num_classes: int, number_of_genotypes: int, alph: float):
     generator = Sequential()
     generator.add(
@@ -39,7 +39,7 @@ def build_generator(latent_dim: int, num_classes: int, number_of_genotypes: int,
     return Model([noise, label], sequence)
 
 
-# Make discriminator
+# Make Discriminator Model
 def build_discriminator(number_of_genotypes: int, num_classes: int, alph: float, d_activation: str):
     # Define the sequence input
 
@@ -67,7 +67,7 @@ def build_discriminator(number_of_genotypes: int, num_classes: int, alph: float,
     return Model(sequence, [validity, label])
 
 
-# Make GAN
+# Make AC-GAN Model
 def build_acgan(generator, discriminator):
     for layer in discriminator.layers:
         if not isinstance(layer, BatchNormalization):
@@ -82,6 +82,24 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
           generator: Model, discriminator: Model, acgan: Model, save_number: int, class_id_to_counts: dict,
           experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str,
           test_dataset):
+    """
+    genome-ac-gan training process
+    :param batch_size: int batch size training
+    :param epochs: int number of epochs
+    :param dataset: tuple of 2 np.arrays (x, y) sequences of genotypes and labels
+    :param num_classes: number of classes in Y_true
+    :param latent_size: input latent size for noise(z)
+    :param generator: generator model
+    :param discriminator: discriminator model
+    :param acgan: acgan model
+    :param save_number: how many epochs between saving the temp results
+    :param class_id_to_counts: map of class translate to id
+    :param experiment_results_path: output folder results path
+    :param id_to_class: translation of id to class name
+    :param real_class_names: all Y_true labels names
+    :param sequence_results_path: path to folder that will contain the synthetic sequences
+    :param test_dataset: dataset to evaluate the classifier
+    """
     class_metric_results = None
     y_real, y_fake = np.ones([batch_size, 1]), np.zeros([batch_size, 1])
     losses = []
@@ -94,7 +112,7 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
             x_batch_real_with_noise = x_batch_real - np.random.uniform(0, 0.1, size=(
                 x_batch_real.shape[0], x_batch_real.shape[1]))
             latent_samples = np.random.normal(loc=0, scale=1,
-                                              size=(batch_size, latent_size))  # create noise to be fed to generator
+                                              size=(batch_size, latent_size))  # create noise to be input to generator
             fake_labels_batch = tensorflow.one_hot(
                 tensorflow.random.uniform((batch_size,), minval=0, maxval=num_classes, dtype=tensorflow.int32),
                 depth=num_classes)
@@ -108,8 +126,8 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
 
             d_loss += discriminator.train_on_batch(X_batch_fake, [y_fake, fake_labels_batch])
             d_loss = (d_loss[0] + d_loss[5]) / 2
-            # make discriminator non-trainable and train gan
             discriminator.trainable = False
+            # finished training discriminator, now train generator
             g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch],
                                           [y_real, fake_labels_batch])
             g_loss = g_loss[0]
@@ -122,15 +140,18 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
             e, epochs, np.average(avg_d_loss), np.average(avg_g_loss)))
         if e % save_number == 0 or e == epochs:
             if test_dataset is not None:
+                # evaluate the classifier
                 class_metric_results = save_discriminator_class_pred(discriminator, test_dataset,
                                                                      experiment_results_path, id_to_class,
                                                                      class_metric_results, e)
 
+            # save all models
             save_models(acgan=acgan, generator=generator, discriminator=discriminator,
                         experiment_results_path=experiment_results_path)
 
+            # plot PCA for all population and for each label
             plot_pca_comparisons(generator=generator, epoch_number=e,
-                                 losses=losses, class_id_to_counts=class_id_to_counts,
+                                 class_id_to_counts=class_id_to_counts,
                                  experiment_results_path=experiment_results_path,
                                  latent_size=latent_size, num_classes=num_classes, dataset=dataset,
                                  id_to_class=id_to_class, real_class_names=real_class_names,
@@ -138,6 +159,16 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
 
 
 def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_LCE):
+    """
+    Polyloss-CE classification loss function that describes in the article:
+    "PolyLoss: A Polynomial Expansion Perspective of Classification Loss Functions"
+    https://arxiv.org/pdf/2204.12511.pdf
+    :param y_true: sequences input y true labels
+    :param y_pred: sequences input y predictions labels
+    :param epsilon: epsilon >=-1, penalty weight
+    :param alpha: 1>=alpha>=0 smooth labels percentages
+    :return: Polyloss-CE score
+    """
     num_classes = y_true.get_shape().as_list()[-1]
     smooth_labels = y_true * (1 - alpha) + alpha / num_classes
     one_minus_pt = tensorflow.reduce_sum(smooth_labels * (1 - y_pred), axis=-1)
@@ -165,6 +196,7 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
         json.dump(class_to_id, f)
     number_of_genotypes = dataset[0].shape[1]
+    # save the reverse_dict for returning each id
     id_to_class = reverse_dict(class_to_id)
     print(f"dataset shapes: {dataset[0].shape, dataset[1].shape}")
     print(f"classes: {num_classes}, class_id_to_counts: {class_id_to_counts}")
@@ -172,6 +204,8 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     real_class_names = real_class_names[0].replace(id_to_class)
     real_class_names = 'Real_' + real_class_names
     real_class_names = list(real_class_names)
+
+    #  build the Genome-AC-GAN including generator, discriminator and AC-GAN which is combine of both
     generator = build_generator(latent_dim=latent_size, num_classes=num_classes,
                                 number_of_genotypes=number_of_genotypes, alph=alph)
 
@@ -196,7 +230,9 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                   loss_weights=[1, class_loss_weights],
                   metrics=['accuracy'])
 
+    # prepare test_dataset for classification compression
     test_dataset = prepare_test_and_fake_dataset(experiment_results) if test_discriminator_classifier else None
+
     train(batch_size=batch_size, epochs=epochs, dataset=dataset, num_classes=num_classes,
           latent_size=latent_size, generator=generator, discriminator=discriminator, acgan=acgan,
           save_number=save_number, class_id_to_counts=class_id_to_counts,

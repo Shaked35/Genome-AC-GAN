@@ -557,12 +557,21 @@ def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
                  target_column: str = DEFAULT_TARGET_COLUMN,
                  minimum_samples: int = DEFAULT_MINIMUM_SAMPLES,
                  without_extra_data: bool = False):
+    """
+    load dataset from hapt_genotypes_path into (x_train, y_train)=dataset after filters and genotypes names
+    adding the labels counts, number of labels and map label to id
+    :param hapt_genotypes_path: input raw data path
+    :param extra_data_path: input extra data path
+    :param target_column: label column name
+    :param minimum_samples: minimum samples of each label. lower than this number the label will be filtered
+    :param without_extra_data: if you raw data already include extra data set it to False
+    :return: return tuple of x and y of real data, class_id_to_counts: number of sample for each label, number of
+    labels in the final dataset and map of label to id
+    """
     real_data = load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data)
     relevant_columns = get_relevant_columns(real_data, [SAMPLE_COLUMN_NAME, target_column])
     real_data = real_data[relevant_columns]
     real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
-    # real_data = real_data.sample(frac=1, random_state=np.random.RandomState(seed=42))
-    # Extract the features into a separate matrix
     relevant_columns_without_target = [x for x in relevant_columns if x not in [SAMPLE_COLUMN_NAME, target_column]]
     X = real_data[relevant_columns_without_target].values
     class_to_id = order_class_ids(X, real_data, target_column)
@@ -792,6 +801,16 @@ def plot_classifications_confusion_matrix(file_paths, output_dir, experiments_re
 
 def save_discriminator_class_pred(discriminator, test_dataset, experiment_results_path, id_to_class,
                                   class_metric_results, epoch):
+    """
+    save results of discriminator as classifier model on the test dataset
+    :param discriminator: discriminator model
+    :param test_dataset: (x_true, y_true)
+    :param experiment_results_path: output directory
+    :param id_to_class: map of class to id
+    :param class_metric_results: output metrics dataframe
+    :param epoch: current epoch number
+    :return: class_metric_results with new rows of new metrics in the current epoch
+    """
     shuffled_dataset = tensorflow.data.Dataset.from_tensor_slices(test_dataset).shuffle(
         test_dataset[0].shape[0]).batch(test_dataset[0].shape[0], drop_remainder=True)
     for x_batch_real, y_batch_real in shuffled_dataset:
@@ -845,6 +864,14 @@ def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_cla
 def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0.2_super_pop.csv",
                                   target_column="Superpopulation code",
                                   from_generated=False):
+    """
+    prepare real test set or fake dataset by input path for classifications tests
+    :param experiment_results: experiment path folder that includes the class_id_map.json
+    :param test_path: path of the input raw dataset
+    :param target_column: what is the name of the label column
+    :param from_generated: is it synthetic data
+    :return:
+    """
     with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
         json_data = file.read()
 
@@ -866,20 +893,27 @@ def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0
     return x_values, y_real
 
 
-def plot_pca_comparisons(generator: Model, epoch_number: int, losses: list,
+def plot_pca_comparisons(generator: Model, epoch_number: int,
                          class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
                          dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
+    """
+    this function plot PCA with n_components=2. the PCA calculated on real and fake and split by class
+    :param generator: generator model
+    :param epoch_number: current epoch number
+    :param class_id_to_counts: number of sample of each class to generate the same numbers
+    :param num_classes: number of classes to generate
+    :param latent_size: generator input noise latent size
+    :param experiment_results_path: output directory path
+    :param dataset: real dataset to compare
+    :param id_to_class: id translate to class name
+    :param real_class_names: sequence of input real classes by name
+    :param sequence_results_path: output directory path of generated sequences
+    """
     # Create AGs
     generated_genomes_df = generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size,
                                                  num_classes, sequence_results_path)
     plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
 
-    fig, ax = plt.subplots()
-    plt.plot(np.array([losses]).T[0], label='Discriminator')
-    plt.plot(np.array([losses]).T[1], label='Generator')
-    plt.title("Training Losses")
-    plt.legend()
-    fig.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_loss.pdf'), format='pdf')
     # Make PCA
     real_sequences = dataset[0].copy()
     real_sequences[real_sequences < 0] = 0
