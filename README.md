@@ -97,7 +97,10 @@ configurations, learning rates, loss functions, and training parameters.
 
 - [Genome-AC-GAN By Continental Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20Continental%20Population%20genotypes.hapt) Genome-AC-GAN trained by Continental Population (Superpopulation code)
 - [Genome-AC-GAN By National Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20National%20Population%20genotypes.hapt) Genome-AC-GAN trained by National Population (Population code)
-
+- [10K_SNP_GAN_AG_10800Epochs.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_SNP_GAN_AG_10800Epochs.hapt) new RMB genotypes from the article: "Deep convolutional and conditional neural networks for large-scale genomic data generation"
+- [10K_WGAN.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_WGAN.hapt)new WGAN genotypes from the article: "Deep convolutional and conditional neural networks for large-scale genomic data generation"
+- [10K_RBM.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_RBM.hapt) old RMB genotypes from the article: "Creating Artificial Human Genomes Using Generative Model"
+- [old GAN retrain genotypes.hapt](fake_genotypes_sequences%2Fpreview_sequences%2Fold%20GAN%20retrain%20genotypes.hapt) old GAN model that retrain on our [train_0.8_super_pop.csv](resource%2Ftrain_0.8_super_pop.csv) that contains 80% of the data
 ### Comparisons and Evaluations
 
 To further evaluate the performance of the Genome-AC-GAN model, this repository enables comparisons with other models
