@@ -4,15 +4,6 @@ This Git repository contains an implementation of the article titled "Genome-AC-
 GANs." The repository provides tools and code to train the Genome-AC-GAN model with various configurations and conduct
 evaluations and comparisons with other models.
 
-Table of Contents
-Introduction
-Installation
-Usage
-Models
-Comparisons and Evaluations
-Contributing
-License
-Introduction
 The Genome-AC-GAN is a model introduced in the article, which focuses on generating artificial human genomes using
 generative models. This repository aims to provide an implementation of the Genome-AC-GAN model, allowing users to train
 the model with different configurations and conduct various evaluations.
