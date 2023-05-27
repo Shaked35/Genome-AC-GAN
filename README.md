@@ -53,7 +53,7 @@ training the old model in the artificial_genomes repository.
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
 - [10K_WGAN.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_WGAN.hapt), [10K_SNP_RBM_AG_1050epochs.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_SNP_RBM_AG_1050epochs.hapt):
   new models from: https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/tree/master/GAN_AGs
-- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models
+- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with arguments:
     1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
        default: `utils.consts.REAL_10K_SNP_1000G_PATH`
 
@@ -123,8 +123,19 @@ information on these models.
 Contributions to this repository are welcome. If you find any issues or have suggestions for improvements, please feel
 free to open an issue or submit a pull request.
 
+
+### Genome-AC-GAN Architecture
+
 ![GSACGANdrawio.png](assets/GS-AC-GAN.drawio.png)
+
+### PCA Compression
+
+![pca2_on_test_real.jpg](assets%2Fpca2_on_test_real.jpg)
 
 ### PCA Of Continental Population Training
 
 ![superpopulation training.gif](assets%2Fsuperpopulation%20training.gif)![superpopulation-training.gif](assets%2Fsuperpopulation-training.gif)
+
+### Classifier Models Improvements With Synthetic Augmentations
+
+![clusiffiers_with_synthetic_compare.jpg](assets%2Fclusiffiers_with_synthetic_compare.jpg)
