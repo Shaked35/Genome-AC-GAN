@@ -93,6 +93,11 @@ training the old model in the artificial_genomes repository.
 These initialization arguments define various settings and parameters for the project, such as file paths, model
 configurations, learning rates, loss functions, and training parameters.
 
+### Synthetic Genotypes Sequences
+
+- [Genome-AC-GAN By Continental Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20Continental%20Population%20genotypes.hapt) Genome-AC-GAN trained by Continental Population (Superpopulation code)
+- [Genome-AC-GAN By National Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20National%20Population%20genotypes.hapt) Genome-AC-GAN trained by National Population (Population code)
+
 ### Comparisons and Evaluations
 
 To further evaluate the performance of the Genome-AC-GAN model, this repository enables comparisons with other models
