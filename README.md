@@ -22,26 +22,29 @@ This repository implement the articles:
 To use this repository, please follow these steps:
 
 Clone the repository to your local machine:
-bash
 Copy code
-git clone https://github.com/Shaked35/Genome-AC-GAN
-Install the necessary dependencies and libraries required to run the code. Please refer to the requirements.txt file for
-the specific packages and versions needed.
+`git clone https://github.com/Shaked35/Genome-AC-GAN`
+
+create venv with python 3.9 and install [requirements.txt](assets/requirements.txt)
+you can run make install or make install_cond from the terminal inside the projct and run the install process by using the makefile.
+
+
 Usage
 Once you have completed the installation process, you can start using the Genome-AC-GAN implementation. Here are the
 general steps to follow:
 
-Prepare your dataset: Ensure that you have a suitable dataset of human genomes for training the model. The dataset
-should be appropriately preprocessed and formatted.
+*Prepare your dataset*: the dataset should be ready in the resource directory.
+before each training you'll do the preprocessing step.
 
-Configure the model: Adjust the configuration parameters of the Genome-AC-GAN model according to your preferences. This
-includes parameters such as the number of epochs, batch size, learning rate, and network architecture.
-
-Train the model: Use the provided training script to train the Genome-AC-GAN model with your dataset. Monitor the
+*Train the model*: Use the provided training script to train the Genome-AC-GAN model with your dataset. Monitor the
 training progress and save checkpoints as desired.
 
-Perform evaluations: After training the model, you can conduct various evaluations to assess its performance. This may
+you can follow the steps below and training the new model or the old model. you also can find the input arguments that will affect the final model.
+
+*Perform evaluations*: After training the model, you can conduct various evaluations to assess its performance. This may
 include evaluating metrics such as sequence similarity, diversity, or other domain-specific measurements.
+
+you can find different evaluations below in different jupyther notebooks.
 
 ### Synthetic Genotypes Sequences (Output Models Results)
 
@@ -106,50 +109,33 @@ training the old model in the artificial_genomes repository.
 - [old_model_training.py](old_model_training.py): train old model based
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
 - [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with arguments:
-    1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
-       default: `utils.consts.REAL_10K_SNP_1000G_PATH`
-
-    2. `experiment_name`: name of the experiment which will be the output folder name
-
-    3. `extra_data_path`: Specifies the file path (extra_data_1000G.tsv) for additional data used in the project. It is
-       located in the resource directory. default: `utils.consts.REAL_EXTRA_DATA_PATH`
-
-    4. `latent_size`: latent_size of the noise. default: `utils.consts.DEFAULT_LATENT_SIZE`
-
-    5. `alph`: LeakyReLU alpha size in each layer of the model. default: `utils.consts.DEFAULT_ALPH`
-
-    6. `g_learn`: generator model learning rate. default: `utils.consts.DEFAULT_GENERATOR_LEARNING_RATE`
-
-    7. `d_learn`: discriminator model learning rate. default: `utils.consts.DEFAULT_DISCRIMINATOR_LEARNING_RATE`
-
-    8. `epochs`: number of epochs. default: `utils.consts.DEFAULT_EPOCHS`
-
-    9. `batch_size`: batch_size during training. default: `utils.consts.DEFAULT_BATCH_SIZE`
-
-    10. `class_loss_weights`: weight of the classifier loss function in the generator and discriminator.
-        default: `utils.consts.DEFAULT_CLASS_LOSS_WEIGHTS`
-
-    11. `save_number`: number of epoch to save model state. default: `utils.consts.DEFAULT_SAVE_NUMBER`
-
-    12. `minimum_samples`: 50: Specifies the minimum number of samples required for a class to be considered valid.
-        default: `utils.consts.DEFAULT_MINIMUM_SAMPLES`
-
-    13. `target_column`: "Superpopulation_code": Indicates the target column in the data, which is used for training and
-        evaluation. optional: ["Superpopulation_code", "Population_code"]. default: `utils.consts.DEFAULT_TARGET_COLUMN`
-
-    14. `d_activation`: discriminator activation function for validity.
-        default: `utils.consts.DEFAULT_DISCRIMINATOR_ACTIVATION`
-
-    15. `class_loss_function`: discriminator loss function for label.
-        default: `utils.consts.DEFAULT_CLASS_LOSS_FUNCTION`
-
-    16. `validation_loss_function`: : discriminator loss function for validity.
-        default: `utils.consts.DEFAULT_VALIDATION_LOSS_FUNCTION`
-
-    17. `without_extra_data`: set True if you need to load extra data. default: `False`
-
-    18. `test_discriminator_classifier`: set True if you want to test the classifier during the training.
-        default: `False`
+  1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
+     default: `utils.consts.REAL_10K_SNP_1000G_PATH`
+  2. `experiment_name`: name of the experiment which will be the output folder name
+  3. `extra_data_path`: Specifies the file path (extra_data_1000G.tsv) for additional data used in the project. It is
+     located in the resource directory. default: `utils.consts.REAL_EXTRA_DATA_PATH`
+  4. `latent_size`: latent_size of the noise. default: `utils.consts.DEFAULT_LATENT_SIZE`
+  5. `alph`: LeakyReLU alpha size in each layer of the model. default: `utils.consts.DEFAULT_ALPH`
+  6. `g_learn`: generator model learning rate. default: `utils.consts.DEFAULT_GENERATOR_LEARNING_RATE`
+  7. `d_learn`: discriminator model learning rate. default: `utils.consts.DEFAULT_DISCRIMINATOR_LEARNING_RATE`
+  8. `epochs`: number of epochs. default: `utils.consts.DEFAULT_EPOCHS`
+  9. `batch_size`: batch_size during training. default: `utils.consts.DEFAULT_BATCH_SIZE`
+  10. `class_loss_weights`: weight of the classifier loss function in the generator and discriminator.
+      default: `utils.consts.DEFAULT_CLASS_LOSS_WEIGHTS`
+  11. `save_number`: number of epoch to save model state. default: `utils.consts.DEFAULT_SAVE_NUMBER`
+  12. `minimum_samples`: 50: Specifies the minimum number of samples required for a class to be considered valid.
+      default: `utils.consts.DEFAULT_MINIMUM_SAMPLES`
+  13. `target_column`: "Superpopulation_code": Indicates the target column in the data, which is used for training and
+      evaluation. optional: ["Superpopulation_code", "Population_code"]. default: `utils.consts.DEFAULT_TARGET_COLUMN`
+  14. `d_activation`: discriminator activation function for validity.
+      default: `utils.consts.DEFAULT_DISCRIMINATOR_ACTIVATION`
+  15. `class_loss_function`: discriminator loss function for label.
+      default: `utils.consts.DEFAULT_CLASS_LOSS_FUNCTION`
+  16. `validation_loss_function`: : discriminator loss function for validity.
+      default: `utils.consts.DEFAULT_VALIDATION_LOSS_FUNCTION`
+  17. `without_extra_data`: set True if you need to load extra data. default: `False`
+  18. `test_discriminator_classifier`: set True if you want to test the classifier during the training.
+      default: `False`
 
 These initialization arguments define various settings and parameters for the project, such as file paths, model
 configurations, learning rates, loss functions, and training parameters.
