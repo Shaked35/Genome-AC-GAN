@@ -8,6 +8,15 @@ The Genome-AC-GAN is a model introduced in the article, which focuses on generat
 generative models. This repository aims to provide an implementation of the Genome-AC-GAN model, allowing users to train
 the model with different configurations and conduct various evaluations.
 
+Preview models and some compression analysis functions based on the project:
+https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/tree/master/GAN_AGs
+
+This repository implement the articles:
+
+"Deep convolutional and conditional neural networks for large-scale genomic data generation"
+
+"Creating Artificial Human Genomes Using Generative Model"
+
 ### Installation
 
 To use this repository, please follow these steps:
@@ -34,7 +43,61 @@ training progress and save checkpoints as desired.
 Perform evaluations: After training the model, you can conduct various evaluations to assess its performance. This may
 include evaluating metrics such as sequence similarity, diversity, or other domain-specific measurements.
 
-### Models
+### Synthetic Genotypes Sequences (Output Models Results)
+
+- [Genome-AC-GAN By Continental Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20Continental%20Population%20genotypes.hapt)
+  Genome-AC-GAN trained by Continental Population (Superpopulation code)
+- [Genome-AC-GAN By National Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20National%20Population%20genotypes.hapt)
+  Genome-AC-GAN trained by National Population (Population code)
+- [10K_SNP_GAN_AG_10800Epochs.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_SNP_GAN_AG_10800Epochs.hapt) new
+  RMB genotypes from the article: "Deep convolutional and conditional neural networks for large-scale genomic data
+  generation"
+- [10K_WGAN.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_WGAN.hapt)new WGAN genotypes from the article: "
+  Deep convolutional and conditional neural networks for large-scale genomic data generation"
+- [10K_RBM.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_RBM.hapt) old RMB genotypes from the article: "
+  Creating Artificial Human Genomes Using Generative Model"
+- [old GAN retrain genotypes.hapt](fake_genotypes_sequences%2Fpreview_sequences%2Fold%20GAN%20retrain%20genotypes.hapt)
+  old GAN model that retrain on our [train_0.8_super_pop.csv](resource%2Ftrain_0.8_super_pop.csv) that contains 80% of
+  the data from the article: "Creating Artificial Human Genomes Using Generative Model"
+
+### Comparisons and Evaluations
+
+To further evaluate the performance of the Genome-AC-GAN model, this repository enables comparisons with other models
+from the article "Creating Artificial Human Genomes Using Generative Models" and the paper "Deep convolutional and
+conditional neural networks for large-scale genomic data generation." You can refer to the corresponding papers for more
+information on these models.
+
+- [compare_models_analysis.py.ipynb](analysis%2Fcompare_models_analysis.py.ipynb): use old and new evaluation test to
+  analysis and compare between different models
+- [population_analysis.ipynb](analysis%2Fpopulation_analysis.ipynb): analysis population models with different
+  evaluation tests like PCA and allele frequency (Continental population and National population)
+- [split_real_data.ipynb](analysis%2Fsplit_real_data.ipynb): split real data to train and test
+- [train_classifier_with_synthetic.ipynb](analysis%2Ftrain_classifier_with_synthetic.ipynb): train different
+  classification models with different amount of synthetic data
+- [classifier_analysis.ipynb](analysis%2Fclassifier_analysis.ipynb): analysis types of different types of loss function
+
+### Contributing
+
+Contributions to this repository are welcome. If you find any issues or have suggestions for improvements, please feel
+free to open an issue or submit a pull request.
+
+### Genome-AC-GAN Architecture
+
+![GSACGANdrawio.png](assets/GS-AC-GAN.drawio.png)
+
+### PCA Compression
+
+![pca2_on_test_real.jpg](assets%2Fpca2_on_test_real.jpg)
+
+### PCA Of Continental Population Training
+
+![superpopulation training.gif](assets%2Fsuperpopulation%20training.gif)![superpopulation-training.gif](assets%2Fsuperpopulation-training.gif)
+
+### Classifier Models Improvements With Synthetic Augmentations
+
+![clusiffiers_with_synthetic_compare.jpg](assets%2Fclusiffiers_with_synthetic_compare.jpg)
+
+### Training Models
 
 In addition to the Genome-AC-GAN model, this repository also provides an implementation of the model described in the
 article "Creating Artificial Human Genomes Using Generative Models." You can find the details and instructions for
@@ -42,8 +105,6 @@ training the old model in the artificial_genomes repository.
 
 - [old_model_training.py](old_model_training.py): train old model based
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
-- [10K_WGAN.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_WGAN.hapt), [10K_SNP_RBM_AG_1050epochs.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_SNP_RBM_AG_1050epochs.hapt):
-  new models from: https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/tree/master/GAN_AGs
 - [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with arguments:
     1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
        default: `utils.consts.REAL_10K_SNP_1000G_PATH`
@@ -92,49 +153,3 @@ training the old model in the artificial_genomes repository.
 
 These initialization arguments define various settings and parameters for the project, such as file paths, model
 configurations, learning rates, loss functions, and training parameters.
-
-### Synthetic Genotypes Sequences
-
-- [Genome-AC-GAN By Continental Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20Continental%20Population%20genotypes.hapt) Genome-AC-GAN trained by Continental Population (Superpopulation code)
-- [Genome-AC-GAN By National Population genotypes.hapt](resource%2FGenome-AC-GAN%20By%20National%20Population%20genotypes.hapt) Genome-AC-GAN trained by National Population (Population code)
-- [10K_SNP_GAN_AG_10800Epochs.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_SNP_GAN_AG_10800Epochs.hapt) new RMB genotypes from the article: "Deep convolutional and conditional neural networks for large-scale genomic data generation"
-- [10K_WGAN.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_WGAN.hapt)new WGAN genotypes from the article: "Deep convolutional and conditional neural networks for large-scale genomic data generation"
-- [10K_RBM.hapt](fake_genotypes_sequences%2Fpreview_sequences%2F10K_RBM.hapt) old RMB genotypes from the article: "Creating Artificial Human Genomes Using Generative Model"
-- [old GAN retrain genotypes.hapt](fake_genotypes_sequences%2Fpreview_sequences%2Fold%20GAN%20retrain%20genotypes.hapt) old GAN model that retrain on our [train_0.8_super_pop.csv](resource%2Ftrain_0.8_super_pop.csv) that contains 80% of the data
-### Comparisons and Evaluations
-
-To further evaluate the performance of the Genome-AC-GAN model, this repository enables comparisons with other models
-from the article "Creating Artificial Human Genomes Using Generative Models" and the paper "Deep convolutional and
-conditional neural networks for large-scale genomic data generation." You can refer to the corresponding papers for more
-information on these models.
-
-- [compare_models_analysis.py.ipynb](analysis%2Fcompare_models_analysis.py.ipynb): use old and new evaluation test to
-  analysis and compare between different models
-- [population_analysis.ipynb](analysis%2Fpopulation_analysis.ipynb): analysis population models with different
-  evaluation tests like PCA and allele frequency (Continental population and National population)
-- [split_real_data.ipynb](analysis%2Fsplit_real_data.ipynb): split real data to train and test
-- [train_classifier_with_synthetic.ipynb](analysis%2Ftrain_classifier_with_synthetic.ipynb): train different
-  classification models with different amount of synthetic data
-- [classifier_analysis.ipynb](analysis%2Fclassifier_analysis.ipynb): analysis types of different types of loss function
-
-### Contributing
-
-Contributions to this repository are welcome. If you find any issues or have suggestions for improvements, please feel
-free to open an issue or submit a pull request.
-
-
-### Genome-AC-GAN Architecture
-
-![GSACGANdrawio.png](assets/GS-AC-GAN.drawio.png)
-
-### PCA Compression
-
-![pca2_on_test_real.jpg](assets%2Fpca2_on_test_real.jpg)
-
-### PCA Of Continental Population Training
-
-![superpopulation training.gif](assets%2Fsuperpopulation%20training.gif)![superpopulation-training.gif](assets%2Fsuperpopulation-training.gif)
-
-### Classifier Models Improvements With Synthetic Augmentations
-
-![clusiffiers_with_synthetic_compare.jpg](assets%2Fclusiffiers_with_synthetic_compare.jpg)
