@@ -62,39 +62,6 @@ def all_same(items):
     return len(set(items)) == 1
 
 
-def plotreg(x, y, keys, statname, col, ax=None):
-    """
-    Plot for x versus y with regression scores and returns correlation coefficient
-
-    Parameters
-    ----------
-    x : array, scalar
-    y : array, scalar
-    statname : str
-        'Allele frequency' LD' or '3 point correlation' etc.
-    col : str, color code
-        color
-
-    """
-
-    lims = [np.min(x), np.max(x)]
-    r, _ = pearsonr(x, y)
-    if sm_loaded:
-        reg = sm.OLS(x, y).fit()
-    if ax is None:
-        ax = plt.subplot(1, 1, 1)
-    if len(x) < 100:
-        alpha = 1
-    else:
-        alpha = .6
-    ax.plot(x, y, label=f"{keys[1]}: cor={round(r, 2)}", c=col, marker='o', lw=0, alpha=alpha)
-    ax.plot(lims, lims, ls='--', alpha=1, c='black')
-    ax.set_xlabel(f'{statname} in {keys[0]}')
-    ax.set_ylabel(f'{statname} in {keys[1]}')
-    ax.legend()
-    return r
-
-
 def plotregquant(x, y, keys, statname, col, step=0.05, cumsum=False, ax=None):
     """
     Plot quantiles for x versus y (every step) with regression scores and returns correlation coefficient
@@ -556,7 +523,8 @@ def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
                  extra_data_path: str = REAL_EXTRA_DATA_PATH,
                  target_column: str = DEFAULT_TARGET_COLUMN,
                  minimum_samples: int = DEFAULT_MINIMUM_SAMPLES,
-                 without_extra_data: bool = False):
+                 with_extra_data: bool = False,
+                 required_populations: list = None):
     """
     load dataset from hapt_genotypes_path into (x_train, y_train)=dataset after filters and genotypes names
     adding the labels counts, number of labels and map label to id
@@ -568,10 +536,12 @@ def init_dataset(hapt_genotypes_path: str = REAL_10K_SNP_1000G_PATH,
     :return: return tuple of x and y of real data, class_id_to_counts: number of sample for each label, number of
     labels in the final dataset and map of label to id
     """
-    real_data = load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data)
+    real_data = load_real_data(extra_data_path, hapt_genotypes_path, with_extra_data)
     relevant_columns = get_relevant_columns(real_data, [SAMPLE_COLUMN_NAME, target_column])
     real_data = real_data[relevant_columns]
     real_data = filter_samples_by_minimum_examples(minimum_samples, real_data, target_column)
+    if required_populations is not None:
+        real_data = filter_required_populations(required_populations, real_data, target_column)
     relevant_columns_without_target = [x for x in relevant_columns if x not in [SAMPLE_COLUMN_NAME, target_column]]
     X = real_data[relevant_columns_without_target].values
     class_to_id = order_class_ids(X, real_data, target_column)
@@ -596,8 +566,8 @@ def extract_x_values(real_data, relevant_columns, target_column):
     return x_train
 
 
-def load_real_data(extra_data_path, hapt_genotypes_path, without_extra_data=False):
-    if without_extra_data:
+def load_real_data(extra_data_path, hapt_genotypes_path, with_extra_data=True):
+    if not with_extra_data:
         return pd.read_csv(hapt_genotypes_path)
     df = pd.read_csv(hapt_genotypes_path, sep=' ', header=None)
     df[1] = df[1].str.replace("_A", "")
@@ -624,6 +594,11 @@ def filter_samples_by_minimum_examples(minimum_samples, real_data, target_column
     return real_data
 
 
+def filter_required_populations(required_populations, real_data, target_column):
+    real_data = real_data[real_data[target_column].isin(required_populations)]
+    return real_data
+
+
 def order_class_ids(X, real_data, target_column):
     pca = PCA(n_components=8)
     X_pca = pca.fit_transform(X)
@@ -632,28 +607,6 @@ def order_class_ids(X, real_data, target_column):
     sorted_by_pca = pd.DataFrame(class_to_pca.groupby(target_column).sum()["pca_sum"]).sort_values("pca_sum")
     class_to_id = {class_name: class_id for class_id, class_name in enumerate(sorted_by_pca.index)}
     return class_to_id
-
-
-def init_analysis_args(output_dir, models_to_data):
-    print("* Loading data (short script sumstats)...")
-    model_name_to_input_file = {model_name: f"../{data['path']}" for model_name, data in models_to_test.items()}
-    model_name_to_color = {model_name: data["color"] for model_name, data in models_to_data.items()}
-    color_palette = {key: model_name_to_color[key] for key in model_name_to_input_file.keys()}
-    sns.set_palette(color_palette.values())
-    print(color_palette)
-    sns.set_palette(color_palette.values())
-    sns.palplot(sns.color_palette())
-    # set the seed so that the same real individual are subsampled (when needed)
-    # to ensure consistency of the scores when adding a new model or a new sumstat
-    np.random.seed(3)
-    random.seed(3)
-    print(f"Figures will be saved in {output_dir}")
-    if os.path.exists(output_dir):
-        print('This directory exists, the following files might be overwritten:')
-        print(os.listdir(output_dir))
-    return model_name_to_input_file, model_name_to_color, color_palette
-
-
 
 
 def build_allele_frequency(datasets):
@@ -863,7 +816,9 @@ def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_cla
 
 def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0.2_super_pop.csv",
                                   target_column="Superpopulation code",
-                                  from_generated=False):
+                                  from_generated=False,
+                                  required_populations=None,
+                                  class_to_id=None):
     """
     prepare real test set or fake dataset by input path for classifications tests
     :param experiment_results: experiment path folder that includes the class_id_map.json
@@ -872,10 +827,11 @@ def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0
     :param from_generated: is it synthetic data
     :return:
     """
-    with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
-        json_data = file.read()
+    if class_to_id is None:
+        with open(os.path.join(experiment_results, "class_id_map.json"), 'r') as file:
+            json_data = file.read()
 
-    class_to_id = json.loads(json_data)
+        class_to_id = json.loads(json_data)
     if from_generated:
         test_set = pd.read_csv(test_path, sep=' ', header=None)
         pop = test_set[0]
@@ -886,7 +842,9 @@ def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0
         test_set = pd.read_csv(test_path)
     relevant_columns = get_relevant_columns(test_set, [SAMPLE_COLUMN_NAME, target_column])
     test_set = filter_samples_by_minimum_examples(10, test_set, target_column)
-    test_set = test_set.sample(frac=1, random_state=np.random.RandomState(seed=42))
+    if required_populations is not None:
+        test_set = filter_required_populations(required_populations, test_set, target_column)
+    test_set = test_set.sample(frac=1)
     _, _, y_real = extract_y_column(class_to_id, test_set, target_column)
     y_real = tensorflow.argmax(y_real, axis=1)
     x_values = extract_x_values(test_set, relevant_columns, target_column)
@@ -922,7 +880,8 @@ def plot_pca_comparisons(generator: Model, epoch_number: int,
     real_sequences['Type'] = real_class_names
     df_all_pca = pd.concat([real_sequences, generated_genomes_df])
     pca = PCA(n_components=2)
-    PCs = pca.fit_transform(df_all_pca.drop(['Type'], axis=1))
+    pca.fit(real_sequences.drop(['Type'], axis=1))
+    PCs = pca.transform(df_all_pca.drop(['Type'], axis=1))
     PCs_df = pd.DataFrame(data=PCs, columns=['PC1', 'PC2'])
     PCs_df['Class'] = list(df_all_pca['Type'])
     # Define the colors for real and fake points

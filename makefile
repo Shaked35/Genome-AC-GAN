@@ -1,23 +1,24 @@
-VENV_DIR = venv
+# Variables
+VENV_NAME := .venv
+VENV_ACTIVATE := $(VENV_NAME)/bin/activate
+REQUIREMENTS := requirements.txt
 
-.PHONY: install install_conda
+.PHONY: venv install
 
-install:
-	@echo "Activating virtual environment..."
-	@. $(VENV_DIR)/bin/activate && \
-		pip install -r requirements.txt
-	@echo "Installation complete."
-
-install_conda:
-	@echo "Activating virtual environment..."
-	@. $(VENV_DIR)/bin/activate && \
-		conda install --file requirements.txt
-	@echo "Installation complete."
-
-$(VENV_DIR):
+# Create a virtual environment if it doesn't exist
+venv:
 	@echo "Creating virtual environment..."
-	@python3 -m venv $(VENV_DIR)
-	@echo "Virtual environment created."
+	@test -d $(VENV_NAME) || python3 -m venv $(VENV_NAME)
 
-clean:
-	rm -rf $(VENV_DIR)
+# Activate the virtual environment
+activate:
+	@echo "Activating virtual environment..."
+	@test -f $(VENV_ACTIVATE) && source $(VENV_ACTIVATE)
+
+# Install dependencies using pip
+install:
+	@echo "Installing dependencies..."
+	@test -f $(REQUIREMENTS) && $(VENV_NAME)/bin/pip install -r $(REQUIREMENTS)
+
+# Run all steps: create virtual environment, activate it, and install dependencies
+setup: venv activate install

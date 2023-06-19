@@ -182,16 +182,19 @@ def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_
 def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path: str, latent_size: int, alph: float,
          g_learn: float, d_learn: float, epochs: int, batch_size: int, class_loss_weights: float, save_number: int,
          minimum_samples: int, target_column: str, sequence_results_path: str, d_activation: str,
-         class_loss_function: str, validation_loss_function: str, without_extra_data: bool,
-         test_discriminator_classifier: bool):
+         class_loss_function: str, validation_loss_function: str, with_extra_data: bool,
+         test_discriminator_classifier: bool, required_populations: list[str]):
     K.clear_session()
     init_gpus()
     target_column = " ".join(target_column.split("_"))
+    required_populations = required_populations if len(required_populations) > 0 else None
     dataset, class_id_to_counts, num_classes, class_to_id = init_dataset(hapt_genotypes_path=hapt_genotypes_path,
                                                                          extra_data_path=extra_data_path,
                                                                          target_column=target_column,
                                                                          minimum_samples=minimum_samples,
-                                                                         without_extra_data=without_extra_data)
+                                                                         with_extra_data=with_extra_data,
+                                                                         required_populations=required_populations
+                                                                         )
     # save class id map
     with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
         json.dump(class_to_id, f)
@@ -272,10 +275,11 @@ def parse_args():
                         help='loss function between different classes')
     parser.add_argument('--validation_loss_function', type=str, default=DEFAULT_VALIDATION_LOSS_FUNCTION,
                         help='loss function between different real/fake')
-    parser.add_argument('--without_extra_data', type=bool, default=False,
+    parser.add_argument('--with_extra_data', action='store_true', default=False,
                         help="don't need to load extra data")
-    parser.add_argument('--test_discriminator_classifier', type=bool, default=False,
+    parser.add_argument('--test_discriminator_classifier', action='store_true', default=False,
                         help="if you want to test the classifier during the training")
+    parser.add_argument('--required_populations', nargs='+', help='List of specific populations to filter')
     return parser.parse_args()
 
 
@@ -307,5 +311,6 @@ if __name__ == '__main__':
          d_activation=args.d_activation,
          class_loss_function=args.class_loss_function,
          validation_loss_function=args.validation_loss_function,
-         without_extra_data=args.without_extra_data,
-         test_discriminator_classifier=args.test_discriminator_classifier)
+         with_extra_data=args.with_extra_data,
+         test_discriminator_classifier=args.test_discriminator_classifier,
+         required_populations=args.required_populations)

@@ -26,7 +26,7 @@ Copy code
 `git clone https://github.com/Shaked35/Genome-AC-GAN`
 
 create venv with python 3.9 and install [requirements.txt](assets/requirements.txt)
-you can run make install or make install_cond from the terminal inside the projct and run the install process by using the makefile.
+you can run make setup or make install_cond from the terminal inside the projct and run the install process by using the makefile.
 
 
 Usage
