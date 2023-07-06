@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import tensorflow
+import torch
 from tensorflow.python.keras.models import Model
 from matplotlib import cm as cm
 from matplotlib import pyplot as plt
@@ -794,13 +795,17 @@ def save_discriminator_class_pred(discriminator, test_dataset, experiment_result
 
 
 def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size, num_classes,
-                          sequence_results_path):
+                          sequence_results_path, framework):
     generated_genomes_total = []
     for class_id, number_of_sequences in class_id_to_counts.items():
-        fake_labels_batch = tensorflow.one_hot(np.full(shape=(number_of_sequences,), fill_value=class_id),
-                                               depth=num_classes)
+        fake_labels_batch = np.eye(num_classes)[np.full(shape=(number_of_sequences,), fill_value=class_id)]
+
         latent_samples = np.random.normal(loc=0, scale=1, size=(number_of_sequences, latent_size))
-        generated_genomes = generator.predict([latent_samples, fake_labels_batch])
+        if framework == "tensorflow":
+            generated_genomes = generator.predict([latent_samples, fake_labels_batch])
+        else:
+            generated_genomes = generator(torch.tensor(latent_samples, dtype=torch.float32),
+                                          torch.tensor(fake_labels_batch, dtype=torch.float32)).detach().numpy()
         generated_genomes[generated_genomes < 0] = 0
         generated_genomes = np.rint(generated_genomes)
         tmp_generated_genomes_df = pd.DataFrame(generated_genomes)
@@ -853,7 +858,8 @@ def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0
 
 def plot_pca_comparisons(generator: Model, epoch_number: int,
                          class_id_to_counts: dict, num_classes: int, latent_size: int, experiment_results_path: str,
-                         dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str):
+                         dataset: tuple, id_to_class: dict, real_class_names: list, sequence_results_path: str,
+                         framework="tensorflow"):
     """
     this function plot PCA with n_components=2. the PCA calculated on real and fake and split by class
     :param generator: generator model
@@ -869,7 +875,7 @@ def plot_pca_comparisons(generator: Model, epoch_number: int,
     """
     # Create AGs
     generated_genomes_df = generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size,
-                                                 num_classes, sequence_results_path)
+                                                 num_classes, sequence_results_path, framework)
     plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
 
     # Make PCA

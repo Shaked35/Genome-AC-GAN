@@ -187,7 +187,8 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
     K.clear_session()
     init_gpus()
     target_column = " ".join(target_column.split("_"))
-    required_populations = required_populations if len(required_populations) > 0 else None
+    required_populations = required_populations if required_populations is not None and len(
+        required_populations) > 0 else None
     dataset, class_id_to_counts, num_classes, class_to_id = init_dataset(hapt_genotypes_path=hapt_genotypes_path,
                                                                          extra_data_path=extra_data_path,
                                                                          target_column=target_column,
