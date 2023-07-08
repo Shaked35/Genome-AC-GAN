@@ -22,7 +22,7 @@ test_set = '../resource/test_AFR_pop.csv'
 experiment_results = '../fake_genotypes_sequences/new_sequences/sub_set_AFR_aug/genotypes.hapt'
 
 # 17000: rf, knn
-output_file = "classifiers_results3.csv"
+output_file = "classifiers_results1.csv"
 target_column = 'Population code'
 
 (x_train, y_train), class_id_to_counts, _, class_to_id = init_dataset(hapt_genotypes_path=train_set,
@@ -33,6 +33,12 @@ id_to_class = {v: k for k, v in class_to_id.items()}
 test_dataset = prepare_test_and_fake_dataset(experiment_results, test_path=test_set,
                                              target_column=target_column,
                                              class_to_id=class_to_id)
+
+
+def calculate_accuracy(precision, recall):
+    # Assuming precision and recall are in the range [0, 1]
+    epsilon = 0.00001
+    return (precision * recall) / ((precision + recall + epsilon) / 2)
 
 
 def shuffle_test_dataset():
@@ -57,6 +63,7 @@ generated_samples = prepare_test_and_fake_dataset(experiment_results,
                                                   class_to_id=class_to_id)
 print(generated_samples[0].shape)
 rows = []
+
 
 def build_classifier(number_of_genotypes: int, alph: float):
     nn_classifier = Sequential([
@@ -119,7 +126,7 @@ def concatenate_fake_data(percentage, generated_samples, x_train, y_train):
 
 
 def init_models():
-    knn = KNeighborsClassifier(n_neighbors=10)
+    knn = KNeighborsClassifier(n_neighbors=5, leaf_size=100)
     nn = build_classifier(10000, 0.01)
     rf = RandomForestClassifier()
     lgr = LogisticRegression(multi_class='multinomial', solver='newton-cg')
@@ -134,7 +141,7 @@ number_of_models = 0
 test_dataset_shuffled = shuffle_test_dataset()
 
 for i in range(unique_models):
-    for synthetic_percentage in [0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+    for synthetic_percentage in [0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]:
         classifiers = init_models()
         start_time = datetime.now()
         for index, (model_name, clf) in enumerate(classifiers.items()):
@@ -162,7 +169,7 @@ for i in range(unique_models):
             for class_label, metrics in class_report.items():
                 if class_label in ['accuracy', 'macro avg', 'weighted avg']:
                     continue
-                class_accuracy[class_label] = metrics['precision'] * metrics['recall']
+                class_accuracy[class_label] = round(calculate_accuracy(metrics['precision'], metrics['recall']), 4)
 
             # Print accuracy by class
             output_row = {}
