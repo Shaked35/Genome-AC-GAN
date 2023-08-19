@@ -6,6 +6,7 @@ import tensorflow.python.keras.backend as K
 import tensorflow.python.ops.numpy_ops
 from keras.layers import BatchNormalization
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.activations import softmax
 from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout
 from tensorflow.python.keras.metrics import CategoricalAccuracy
 from tensorflow.python.keras.models import Sequential
@@ -171,7 +172,7 @@ def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_
     """
     num_classes = y_true.get_shape().as_list()[-1]
     smooth_labels = y_true * (1 - alpha) + alpha / num_classes
-    one_minus_pt = tensorflow.reduce_sum(smooth_labels * (1 - y_pred), axis=-1)
+    one_minus_pt = tensorflow.reduce_sum(smooth_labels * (1 - softmax(y_pred)), axis=-1)
     CE_loss = tensorflow.keras.losses.CategoricalCrossentropy(from_logits=False, label_smoothing=alpha,
                                                               reduction='none')
     CE = CE_loss(y_true, y_pred)

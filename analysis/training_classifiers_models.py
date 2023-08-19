@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.callbacks import EarlyStopping
 from tensorflow.python.keras.layers import Dense, LeakyReLU
 from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -22,7 +23,7 @@ test_set = '../resource/test_AFR_pop.csv'
 experiment_results = '../fake_genotypes_sequences/new_sequences/sub_set_AFR_aug/genotypes.hapt'
 
 # 17000: rf, knn
-output_file = "classifiers_results1.csv"
+output_file = "classifiers_results2.csv"
 target_column = 'Population code'
 
 (x_train, y_train), class_id_to_counts, _, class_to_id = init_dataset(hapt_genotypes_path=train_set,
@@ -99,17 +100,15 @@ def concatenate_fake_data(percentage, generated_samples, x_train, y_train):
         train_dataset_with_generated_data = (x_train, y_train)
         num_samples = 0
     else:
-        num_samples = int(percentage * len(generated_samples[0]))
-        _, X_synthetic, _, Y_synthetic = train_test_split(generated_samples[0],
-                                                          np.array(generated_samples[1]),
-                                                          test_size=percentage,
-                                                          random_state=None)
-        print(Y_synthetic.shape)
-        uniques, counts = np.unique(Y_synthetic, return_counts=True)
-        total_samples = len(Y_synthetic)
-        percentages = counts / total_samples * 100
-        class_percentage_dict = dict(zip(uniques, percentages))
-        print(class_percentage_dict)
+        if percentage == 1:
+            num_samples = int(len(generated_samples[0]))
+            X_synthetic, Y_synthetic = generated_samples[0], generated_samples[1]
+        else:
+            num_samples = int(percentage * len(generated_samples[0]))
+            _, X_synthetic, _, Y_synthetic = train_test_split(generated_samples[0],
+                                                              np.array(generated_samples[1]),
+                                                              test_size=percentage,
+                                                              random_state=None)
         train_dataset_with_generated_data = (
             np.concatenate((x_train, X_synthetic), axis=0),
             np.concatenate((y_train, Y_synthetic), axis=0)
@@ -131,20 +130,21 @@ def init_models():
     rf = RandomForestClassifier()
     lgr = LogisticRegression(multi_class='multinomial', solver='newton-cg')
     svc = SVC(kernel='rbf')
-    return {'KNN': knn, 'NN': nn, 'LGR': lgr}
+    # return {'KNN': knn, 'NN': nn, 'LGR': lgr}
+    return {'NN': nn}
 
 
 scores = []
 test_predictions = []
 unique_models = 50
 number_of_models = 0
-test_dataset_shuffled = shuffle_test_dataset()
 
 for i in range(unique_models):
     for synthetic_percentage in [0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]:
         classifiers = init_models()
         start_time = datetime.now()
         for index, (model_name, clf) in enumerate(classifiers.items()):
+            test_dataset_shuffled = shuffle_test_dataset()
             print(f"{i}: starting model {model_name} with percentage: {synthetic_percentage}")
             train_dataset_with_generated_data, number_of_synthetic_samples = concatenate_fake_data(
                 percentage=synthetic_percentage,
@@ -154,9 +154,18 @@ for i in range(unique_models):
             if model_name == 'NN':
                 Y_train_encoded = tensorflow.one_hot(train_dataset_with_generated_data[1],
                                                      depth=train_dataset_with_generated_data[1].max() + 1)
+                # Split the training dataset into training and validation sets
+                x_train_tmp, x_val_tmp, y_train_tmp, y_val_tmp = train_test_split(train_dataset_with_generated_data[0],
+                                                                                  np.array(Y_train_encoded),
+                                                                                  test_size=0.2)
 
-                clf.fit(train_dataset_with_generated_data[0], Y_train_encoded,
-                        batch_size=512, epochs=100, verbose=0)
+                # Define early stopping
+                early_stopping = EarlyStopping(patience=100, restore_best_weights=True, monitor='val_loss')
+
+                clf.fit(x_train_tmp, y_train_tmp, batch_size=512, epochs=1000, verbose=0,
+                        validation_data=(x_val_tmp, y_val_tmp), callbacks=[early_stopping])
+
+                # Make predictions on the test dataset
                 test_predictions = tensorflow.argmax(clf.predict(test_dataset_shuffled[0]), axis=1)
 
             else:

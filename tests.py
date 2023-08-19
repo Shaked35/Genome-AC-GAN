@@ -1,11 +1,8 @@
 from unittest import TestCase
 
-import tensorflow
-from sklearn.metrics import f1_score
-from tensorflow.python.keras.losses import binary_crossentropy
+from tensorflow.python.keras.losses import categorical_crossentropy
 
-from genome_ac_gan_training import f1_score_with_penalty, f1_loss_score
-from utils import util
+from genome_ac_gan_training import polyloss_ce
 from utils.util import *
 
 
@@ -40,3 +37,25 @@ class Test(TestCase):
                                                                         real_data_super_population,
                                                                         'Superpopulation code')
         self.assertLess(len(real_data_population), len(real_data_super_population))
+
+
+    def test_poly_loss(self):
+        y_true = np.array([[0, 1, 0, 0], [0, 0, 1, 0]])
+        y_pred = np.array([[0.15, 0.55, 0.15, 0.15], [0.3, 0.2, 0.1, 0.4]])
+
+        # Convert test data to tensors
+        y_true_tensor = tensorflow.convert_to_tensor(y_true, dtype=tensorflow.float32)
+        y_pred_tensor = tensorflow.convert_to_tensor(y_pred, dtype=tensorflow.float32)
+
+        # Calculate PolyLoss-CE score
+        polyloss_ce_score = polyloss_ce(y_true_tensor, y_pred_tensor, epsilon=0.1, alpha=0.1)
+
+        # Calculate the expected PolyLoss-CE score using the provided equations
+        smooth_labels = y_true_tensor * (1 - 0.1) + 0.1 / y_true_tensor.shape[-1]
+        one_minus_pt = tensorflow.reduce_sum(smooth_labels * (1 - y_pred_tensor), axis=-1)
+        CE_loss = categorical_crossentropy(y_true_tensor, y_pred_tensor, label_smoothing=0.1)
+        expected_polyloss_ce_score = CE_loss + 0.1 * one_minus_pt
+
+        # Compare the calculated score with the expected score
+        assert np.allclose(polyloss_ce_score.numpy(), expected_polyloss_ce_score.numpy())
+
