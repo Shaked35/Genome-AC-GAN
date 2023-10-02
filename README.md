@@ -26,7 +26,7 @@ Copy code
 `git clone https://github.com/Shaked35/cGenome-AC-GAN`
 
 create venv with python 3.9 and install [requirements.txt](assets/requirements.txt)
-you can run make setup or make install_cond from the terminal inside the projct and run the install process by using the makefile.
+you can run make setup or make install from the terminal inside the project to prepare your python virtual environment.
 
 Usage
 Once you have completed the installation process, you can start using the Genome-AC-GAN implementation. Here are the
@@ -35,8 +35,10 @@ general steps to follow:
 *Prepare your dataset*: the dataset should be ready in the resource directory.
 before each training you'll do the preprocessing step.
 
-*Train the model*: Use the provided training script to train the Genome-AC-GAN model with your dataset. Monitor the
-training progress and save checkpoints as desired.
+*Train the model*: Use the provided training script [train_with_configuration.py](train_with_configuration.py) to train 
+the Genome-AC-GAN model based on yaml configuration. you can use one of the existing 
+configurations [configurations](configurations) that used in our paper.
+if you want to train your own model, create a new yaml configuration based on the [arguments_description.yaml](configurations%2Farguments_description.yaml) and run the same script with --path <your_configuration_path.yaml>
 
 you can follow the steps below and training the new model or the old model. you also can find the input arguments that will affect the final model.
 
@@ -102,40 +104,13 @@ free to open an issue or submit a pull request.
 
 ### Training Models
 
+
 In addition to the Genome-AC-GAN model, this repository also provides an implementation of the model described in the
 article "Creating Artificial Human Genomes Using Generative Models." You can find the details and instructions for
 training the old model in the artificial_genomes repository.
 
 - [old_model_training.py](old_model_training.py): train old model based
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
-- [genome_ac_gan_training.py](genome_ac_gan_training.py) or [train_with_configuration.py](train_with_configuration.py): train new types of models with arguments:
-  1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
-     default: `utils.consts.REAL_10K_SNP_1000G_PATH`
-  2. `experiment_name`: name of the experiment which will be the output folder name
-  3. `extra_data_path`: Specifies the file path (extra_data_1000G.tsv) for additional data used in the project. It is
-     located in the resource directory. default: `utils.consts.REAL_EXTRA_DATA_PATH`
-  4. `latent_size`: latent_size of the noise. default: `utils.consts.DEFAULT_LATENT_SIZE`
-  5. `alph`: LeakyReLU alpha size in each layer of the model. default: `utils.consts.DEFAULT_ALPH`
-  6. `g_learn`: generator model learning rate. default: `utils.consts.DEFAULT_GENERATOR_LEARNING_RATE`
-  7. `d_learn`: discriminator model learning rate. default: `utils.consts.DEFAULT_DISCRIMINATOR_LEARNING_RATE`
-  8. `epochs`: number of epochs. default: `utils.consts.DEFAULT_EPOCHS`
-  9. `batch_size`: batch_size during training. default: `utils.consts.DEFAULT_BATCH_SIZE`
-  10. `class_loss_weights`: weight of the classifier loss function in the generator and discriminator.
-      default: `utils.consts.DEFAULT_CLASS_LOSS_WEIGHTS`
-  11. `save_number`: number of epoch to save model state. default: `utils.consts.DEFAULT_SAVE_NUMBER`
-  12. `minimum_samples`: 50: Specifies the minimum number of samples required for a class to be considered valid.
-      default: `utils.consts.DEFAULT_MINIMUM_SAMPLES`
-  13. `target_column`: "Superpopulation_code": Indicates the target column in the data, which is used for training and
-      evaluation. optional: ["Superpopulation_code", "Population_code"]. default: `utils.consts.DEFAULT_TARGET_COLUMN`
-  14. `d_activation`: discriminator activation function for validity.
-      default: `utils.consts.DEFAULT_DISCRIMINATOR_ACTIVATION`
-  15. `class_loss_function`: discriminator loss function for label.
-      default: `utils.consts.DEFAULT_CLASS_LOSS_FUNCTION`
-  16. `validation_loss_function`: : discriminator loss function for validity.
-      default: `utils.consts.DEFAULT_VALIDATION_LOSS_FUNCTION`
-  17. `without_extra_data`: set True if you need to load extra data. default: `False`
-  18. `test_discriminator_classifier`: set True if you want to test the classifier during the training.
-      default: `False`
+- [train_with_configuration.py](train_with_configuration.py): training Genome-AC-GAN model based on input --path config
+- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with cli arguments
 
-These initialization arguments define various settings and parameters for the project, such as file paths, model
-configurations, learning rates, loss functions, and training parameters.

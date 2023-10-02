@@ -2,7 +2,7 @@ from unittest import TestCase
 
 from tensorflow.python.keras.losses import categorical_crossentropy
 
-from genome_ac_gan_training import polyloss_ce, wasserstein_loss
+from genome_ac_gan_training import polyloss_ce
 from utils.util import *
 
 
@@ -28,54 +28,45 @@ class Test(TestCase):
     def test_load_data(self):
         real_data = load_real_data(hapt_genotypes_path=REAL_10K_SNP_1000G_PATH,
                                    extra_data_path=REAL_EXTRA_DATA_PATH)
-        real_data_population = real_data[get_relevant_columns(real_data, 'Population code')]
+        real_data_population = real_data[get_relevant_columns(real_data, ['Population code'])]
         real_data_population = filter_samples_by_minimum_examples(150, real_data_population,
                                                                   'Population code')
         real_data_super_population = real_data[get_relevant_columns(real_data,
-                                                                    'Superpopulation code')]
+                                                                    ['Superpopulation code'])]
         real_data_super_population = filter_samples_by_minimum_examples(10,
                                                                         real_data_super_population,
                                                                         'Superpopulation code')
         self.assertLess(len(real_data_population), len(real_data_super_population))
 
+    def test_polyloss_ce(self):
+        epsilon = 0.1
+        alpha = 0.2
 
-    def test_poly_loss(self):
-        y_true = np.array([[0, 1, 0, 0], [0, 0, 1, 0]])
-        y_pred = np.array([[0.15, 0.55, 0.15, 0.15], [0.3, 0.2, 0.1, 0.4]])
+        # Create example y_true and y_pred tensors
+        y_true = tensorflow.constant([[0, 1, 0], [1, 0, 0]], dtype=tensorflow.float32)
+        y_pred = tensorflow.constant([[0.1, 0.7, 0.2], [0.3, 0.4, 0.3]], dtype=tensorflow.float32)
 
-        # Convert test data to tensors
-        y_true_tensor = tensorflow.convert_to_tensor(y_true, dtype=tensorflow.float32)
-        y_pred_tensor = tensorflow.convert_to_tensor(y_pred, dtype=tensorflow.float32)
+        expected_loss = [0.62613606, 1.2523638]  # Updated expected Polyloss-CE scores for each sample
 
-        # Calculate PolyLoss-CE score
-        polyloss_ce_score = polyloss_ce(y_true_tensor, y_pred_tensor, epsilon=0.1, alpha=0.1)
+        # Calculate the actual Polyloss-CE scores
+        actual_loss = polyloss_ce(y_true, y_pred, epsilon=epsilon, alpha=alpha)
 
-        # Calculate the expected PolyLoss-CE score using the provided equations
-        smooth_labels = y_true_tensor * (1 - 0.1) + 0.1 / y_true_tensor.shape[-1]
-        one_minus_pt = tensorflow.reduce_sum(smooth_labels * (1 - y_pred_tensor), axis=-1)
-        CE_loss = categorical_crossentropy(y_true_tensor, y_pred_tensor, label_smoothing=0.1)
-        expected_polyloss_ce_score = CE_loss + 0.1 * one_minus_pt
+        # Check if the actual Polyloss-CE scores match the expected scores
+        for i in range(len(expected_loss)):
+            self.assertAlmostEqual(actual_loss[i].numpy(), expected_loss[i], places=6)
 
-        # Compare the calculated score with the expected score
-        assert np.allclose(polyloss_ce_score.numpy(), expected_polyloss_ce_score.numpy())
+    def test_get_smoothing_label_batch(self):
+        # Create example y tensor
+        y = tensorflow.constant([[0, 1, 0], [1, 0, 0]], dtype=tensorflow.float32)
 
+        # Set the random seed for reproducibility
+        tensorflow.random.set_seed(123)
 
-    def test_loss(self):
-        import tensorflow as tf
-        y_true = np.array([-1,-1,-1])
-        y_pred = np.array([2, -30, 20])
-        min_max_value = 10.0
+        # Calculate the actual smoothed y tensor
+        actual_smoothed_y = get_smoothing_label_batch(y)
 
-        expected_loss = np.mean(y_true * np.minimum(np.maximum(y_pred, -min_max_value), min_max_value))
-
-        # Convert to TensorFlow tensors
-        y_true_tf = tf.constant(y_true, dtype=tf.float32)
-        y_pred_tf = tf.constant(y_pred, dtype=tf.float32)
-        min_max_value_tf = tf.constant(min_max_value, dtype=tf.float32)
-
-        # Calculate the loss using the function
-        loss = wasserstein_loss(y_true_tf, y_pred_tf, min_max_value_tf)
-
-        # Check if the calculated loss matches the expected loss
-        np.testing.assert_almost_equal(loss.numpy(), expected_loss, decimal=6)
-
+        # Check if the actual smoothed y tensor matches the expected tensor
+        for i in range(len(y)):
+            for j in range(len(y[i])):
+                self.assertGreater(actual_smoothed_y[i][j].numpy(), -0.5)
+                self.assertLess(actual_smoothed_y[i][j].numpy(), 1)

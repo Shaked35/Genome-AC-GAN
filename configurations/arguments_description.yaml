@@ -1,0 +1,55 @@
+training_parameters:
+  hapt_genotypes_path:
+    description: "HapT genotypes data used in the training process. It is located in the resource directory."
+    default: "utils.consts.REAL_10K_SNP_1000G_PATH"
+  experiment_name:
+    description: "Name of the experiment which will be the output folder name."
+  extra_data_path:
+    description: "Specifies the file path (extra_data_1000G.tsv) for additional data used in the project. It is located in the resource directory."
+    default: "utils.consts.REAL_EXTRA_DATA_PATH"
+  latent_size:
+    description: "Latent size of the noise."
+    default: "utils.consts.DEFAULT_LATENT_SIZE"
+  alph:
+    description: "LeakyReLU alpha size in each layer of the model."
+    default: "utils.consts.DEFAULT_ALPH"
+  g_learn:
+    description: "Generator model learning rate."
+    default: "utils.consts.DEFAULT_GENERATOR_LEARNING_RATE"
+  d_learn:
+    description: "Discriminator model learning rate."
+    default: "utils.consts.DEFAULT_DISCRIMINATOR_LEARNING_RATE"
+  epochs:
+    description: "Number of epochs."
+    default: "utils.consts.DEFAULT_EPOCHS"
+  batch_size:
+    description: "Batch size during training."
+    default: "utils.consts.DEFAULT_BATCH_SIZE"
+  class_loss_weights:
+    description: "Weight of the classifier loss function in the generator and discriminator."
+    default: "utils.consts.DEFAULT_CLASS_LOSS_WEIGHTS"
+  save_number:
+    description: "Number of epoch to save model state."
+    default: "utils.consts.DEFAULT_SAVE_NUMBER"
+  minimum_samples:
+    description: "Specifies the minimum number of samples required for a class to be considered valid."
+    default: "utils.consts.DEFAULT_MINIMUM_SAMPLES"
+  target_column:
+    description: "Indicates the target column in the data, which is used for training and evaluation."
+    optional: ["Superpopulation_code", "Population_code"]
+    default: "utils.consts.DEFAULT_TARGET_COLUMN"
+  d_activation:
+    description: "Discriminator activation function for validity."
+    default: "utils.consts.DEFAULT_DISCRIMINATOR_ACTIVATION"
+  class_loss_function:
+    description: "Discriminator loss function for label."
+    default: "utils.consts.DEFAULT_CLASS_LOSS_FUNCTION"
+  validation_loss_function:
+    description: "Discriminator loss function for validity."
+    default: "utils.consts.DEFAULT_VALIDATION_LOSS_FUNCTION"
+  without_extra_data:
+    description: "Set True if you need to load extra data."
+    default: False
+  test_discriminator_classifier:
+    description: "Set True if you want to test the classifier during the training."
+    default: False

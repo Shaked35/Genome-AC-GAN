@@ -2,12 +2,13 @@ import argparse
 import os.path
 from pathlib import Path
 
+import tensorflow as tf
 import tensorflow.python.keras.backend as K
 import tensorflow.python.ops.numpy_ops
 from keras.layers import BatchNormalization
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.activations import softmax
-from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout, Conv1D, Conv1DTranspose, Flatten, Reshape
+from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout
 from tensorflow.python.keras.metrics import CategoricalAccuracy
 from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -77,9 +78,6 @@ def build_acgan(generator, discriminator):
     acgan_output = discriminator(generator.output)
     acgan = Model(generator.input, acgan_output)
     return acgan
-
-
-import tensorflow as tf
 
 
 def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent_size: int,
