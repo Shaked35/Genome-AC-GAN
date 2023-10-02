@@ -2,7 +2,7 @@ from unittest import TestCase
 
 from tensorflow.python.keras.losses import categorical_crossentropy
 
-from genome_ac_gan_training import polyloss_ce
+from genome_ac_gan_training import polyloss_ce, wasserstein_loss
 from utils.util import *
 
 
@@ -58,4 +58,24 @@ class Test(TestCase):
 
         # Compare the calculated score with the expected score
         assert np.allclose(polyloss_ce_score.numpy(), expected_polyloss_ce_score.numpy())
+
+
+    def test_loss(self):
+        import tensorflow as tf
+        y_true = np.array([-1,-1,-1])
+        y_pred = np.array([2, -30, 20])
+        min_max_value = 10.0
+
+        expected_loss = np.mean(y_true * np.minimum(np.maximum(y_pred, -min_max_value), min_max_value))
+
+        # Convert to TensorFlow tensors
+        y_true_tf = tf.constant(y_true, dtype=tf.float32)
+        y_pred_tf = tf.constant(y_pred, dtype=tf.float32)
+        min_max_value_tf = tf.constant(min_max_value, dtype=tf.float32)
+
+        # Calculate the loss using the function
+        loss = wasserstein_loss(y_true_tf, y_pred_tf, min_max_value_tf)
+
+        # Check if the calculated loss matches the expected loss
+        np.testing.assert_almost_equal(loss.numpy(), expected_loss, decimal=6)
 

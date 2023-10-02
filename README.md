@@ -23,11 +23,10 @@ To use this repository, please follow these steps:
 
 Clone the repository to your local machine:
 Copy code
-`git clone https://github.com/Shaked35/Genome-AC-GAN`
+`git clone https://github.com/Shaked35/cGenome-AC-GAN`
 
 create venv with python 3.9 and install [requirements.txt](assets/requirements.txt)
 you can run make setup or make install_cond from the terminal inside the projct and run the install process by using the makefile.
-
 
 Usage
 Once you have completed the installation process, you can start using the Genome-AC-GAN implementation. Here are the

@@ -1,0 +1,26 @@
+hapt_genotypes_path: resource/train_AFR_pop.csv
+experiment_name: AFR_aug_model
+extra_data_path: resource/extra_data_1000G.tsv
+latent_size: 800
+alph: 0.01
+g_learn: 0.0001
+d_learn: 0.0008
+epochs: 20000
+batch_size: 256
+class_loss_weights: 1
+save_number: 50
+minimum_samples: 5
+target_column: Population_code
+d_activation: sigmoid
+class_loss_function: polyloss_ce
+validation_loss_function: binary_crossentropy
+with_extra_data: false
+test_discriminator_classifier: false
+required_populations:
+  - ACB
+  - GWD
+  - ESN
+  - MSL
+  - YRI
+  - LWK
+  - ASW

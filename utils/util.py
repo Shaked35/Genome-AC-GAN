@@ -3,25 +3,26 @@ import json
 import math
 import os
 import os.path
-import random
 
 import matplotlib.backends.backend_pdf
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import tensorflow
-import torch
-from tensorflow.python.keras.models import Model
 from matplotlib import cm as cm
 from matplotlib import pyplot as plt
 from scipy import stats as scs
+from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance
+from scipy.spatial.distance import cdist
 from scipy.stats import pearsonr, linregress
 from sklearn.decomposition import PCA
-from tensorflow.python import enable_eager_execution
-from tensorflow.python.keras.utils.np_utils import to_categorical
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, \
     cohen_kappa_score
+from tensorflow.python import enable_eager_execution
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.utils.np_utils import to_categorical
+
 from utils.consts import *
 
 try:
@@ -46,6 +47,7 @@ def reverse_dict(d):
 
 
 def init_gpus():
+    tensorflow.keras.backend.clear_session()
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
     gpus = tensorflow.config.experimental.list_physical_devices('GPU')
     enable_eager_execution()
@@ -63,37 +65,69 @@ def all_same(items):
     return len(set(items)) == 1
 
 
-def plotregquant(x, y, keys, statname, col, step=0.05, cumsum=False, ax=None):
+from sklearn.metrics import mean_absolute_error
+
+
+def plotreg(x, y, keys, statname, col, model_name_display, ax=None):
     """
-    Plot quantiles for x versus y (every step) with regression scores and returns correlation coefficient
+    Plot for x versus y with regression scores and returns correlation coefficient and MSE
 
     Parameters
     ----------
-    x : array, scalar
-    y : array, scalar
+    x : array-like, scalar
+    y : array-like, scalar
+    keys : tuple
+        Tuple containing the model names or keys
     statname : str
-        'Allele frequency' LD' or '3 point correlation' etc.
-    col : str, color code
-        color
-    step : float
-        step between quantiles
-    cumsum : boolean
-        plot cumulative sum of quantiles instead
+        'Allele frequency', 'LD', or '3 point correlation', etc.
+    col : str
+        Color code or name
 
-    Return
-    ------
-    r: float
-        Pearson correlation coefficient
-
+    Returns
+    -------
+    r : float
+        Pearson correlation coefficient between x and y
+    mse : float
+        Mean Squared Error between x and y
     """
-    q = np.arange(0, 1, step=step)
-    x = np.nanquantile(x, q)
-    y = np.nanquantile(y, q)
-    if cumsum:
-        x = np.cumsum(x)
-        y = np.cumsum(y)
-    r = plotreg(x=x, y=y, keys=keys, statname=f'Quantiles {statname}', col=col, ax=ax)
-    return r
+
+    lims = [np.min(x), np.max(x)]
+    r, _ = pearsonr(x, y)
+    mae = mean_absolute_error(x, y)
+
+    if sm_loaded:
+        reg = sm.OLS(x, y).fit()
+
+    if ax is None:
+        ax = plt.subplot(1, 1, 1)
+
+    if len(x) < 100:
+        alpha = 1
+    else:
+        alpha = .6
+
+    ax.plot(x, y, c=col, marker='o', lw=0, alpha=alpha)
+    ax.plot(lims, lims, ls='--', alpha=1, c='black')
+    title = ax.set_title(
+        f'{model_name_display}\nCorrelation={round(r * 100, 2)}%\nMAE={round(mae, 4)}',
+        fontsize=29, fontweight="bold", y=1, color='black')
+
+    title.set_bbox({'facecolor': 'white', 'edgecolor': "black", 'pad': 1.2})
+    ax.set_xlabel("MAF In Real", fontsize=28, fontweight="bold")
+    ax.set_ylabel("MAF In Synthetic", fontsize=28, fontweight="bold")
+
+    ax.plot(x, y, c=col, marker='o', lw=0)
+    ax.plot(lims, lims, ls='--', alpha=1, c='black')
+    title = ax.set_title(
+        f'{model_name_display}\nCorrelation={round(r * 100, 2)}%\nMAE={round(mae, 4)}',
+        fontsize=35, fontweight="bold", y=1, color='black')
+    title.set_bbox({'facecolor': (0.9, 0.9, 0.9), 'edgecolor': "black", 'pad': 1.5})
+    ax.set_xlabel("MAF In Real", fontsize=25, fontweight="bold")
+    ax.set_ylabel("MAF In Synthetic", fontsize=25, fontweight="bold")
+    # Adjust vertical spacing between subplots
+    # plt.subplots_adjust(hspace=0.2, wspace=0.5)
+
+    return r, mae
 
 
 def plotquant(x, y, keys, statname, col, step=0.05, cumsum=False, ax=None):
@@ -601,7 +635,7 @@ def filter_required_populations(required_populations, real_data, target_column):
 
 
 def order_class_ids(X, real_data, target_column):
-    pca = PCA(n_components=8)
+    pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X)
     class_to_pca = real_data[[target_column]]
     class_to_pca.loc[:, "pca_sum"] = np.sqrt(np.square(X_pca).sum(axis=1))
@@ -798,14 +832,10 @@ def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_cla
                           sequence_results_path, framework):
     generated_genomes_total = []
     for class_id, number_of_sequences in class_id_to_counts.items():
-        fake_labels_batch = np.eye(num_classes)[np.full(shape=(number_of_sequences,), fill_value=class_id)]
-
-        latent_samples = np.random.normal(loc=0, scale=1, size=(number_of_sequences, latent_size))
-        if framework == "tensorflow":
-            generated_genomes = generator.predict([latent_samples, fake_labels_batch])
-        else:
-            generated_genomes = generator(torch.tensor(latent_samples, dtype=torch.float32),
-                                          torch.tensor(fake_labels_batch, dtype=torch.float32)).detach().numpy()
+        number_of_generated_sequences = number_of_sequences * GENERATOR_POP_FACTOR
+        fake_labels_batch = np.eye(num_classes)[np.full(shape=(number_of_generated_sequences,), fill_value=class_id)]
+        latent_samples = np.random.normal(loc=0, scale=1, size=(number_of_generated_sequences, latent_size))
+        generated_genomes = generator.predict([latent_samples, fake_labels_batch])
         generated_genomes[generated_genomes < 0] = 0
         generated_genomes = np.rint(generated_genomes)
         tmp_generated_genomes_df = pd.DataFrame(generated_genomes)
@@ -819,8 +849,8 @@ def generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_cla
     return generated_genomes_df
 
 
-def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_0.2_super_pop.csv",
-                                  target_column="Superpopulation code",
+def prepare_test_and_fake_dataset(experiment_results, test_path="resource/test_AFR_pop.csv",
+                                  target_column="Population code",
                                   from_generated=False,
                                   required_populations=None,
                                   class_to_id=None):
@@ -876,6 +906,10 @@ def plot_pca_comparisons(generator: Model, epoch_number: int,
     # Create AGs
     generated_genomes_df = generate_fake_samples(class_id_to_counts, epoch_number, generator, id_to_class, latent_size,
                                                  num_classes, sequence_results_path, framework)
+    # _, generated_genomes_df = train_test_split(full_generated_genomes_df,
+    #                                                                   test_size=1/GENERATOR_POP_FACTOR,
+    #                                                                   stratify=full_generated_genomes_df[0],
+    #                                                                   random_state=42)
     plt.rcParams['figure.max_open_warning'] = 50  # set the max number of figures before the warning is triggered to 50
 
     # Make PCA
@@ -884,13 +918,6 @@ def plot_pca_comparisons(generator: Model, epoch_number: int,
     real_sequences = np.rint(real_sequences)
     real_sequences = pd.DataFrame(real_sequences)
     real_sequences['Type'] = real_class_names
-    df_all_pca = pd.concat([real_sequences, generated_genomes_df])
-    pca = PCA(n_components=2)
-    pca.fit(real_sequences.drop(['Type'], axis=1))
-    PCs = pca.transform(df_all_pca.drop(['Type'], axis=1))
-    PCs_df = pd.DataFrame(data=PCs, columns=['PC1', 'PC2'])
-    PCs_df['Class'] = list(df_all_pca['Type'])
-    # Define the colors for real and fake points
     real_color = 'blue'
     fake_color = 'red'
     # Define the populations
@@ -903,44 +930,53 @@ def plot_pca_comparisons(generator: Model, epoch_number: int,
     row = 0
     alpha_color = 0.3
     for i, pop in enumerate(populations):
-        # Get the indices of the real and fake points for this population
-        real_idx = (PCs_df['Class'] == f'Real_{pop}')
-        fake_idx = (PCs_df['Class'] == f'Fake_{pop}')
+        pca = PCA(n_components=2)
+        pca.fit(real_sequences[real_sequences['Type'] == f'Real_{pop}'].drop(['Type'], axis=1))
+        real_pca = pca.transform(real_sequences[real_sequences['Type'] == f'Real_{pop}'].drop(['Type'], axis=1))
+        fake_pca = pca.transform(
+            generated_genomes_df[generated_genomes_df['Type'] == f'Fake_{pop}'].drop(['Type'], axis=1))
 
         # Get the PCA values for the real and fake points
-        real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
-        fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
+        real_pca2 = real_pca[:, :2]
+        fake_pca2 = fake_pca[:, :2]
+        real_pca2_df = pd.DataFrame(real_pca2, columns=['PC1', 'PC2'])
+        fake_pca2_df = pd.DataFrame(fake_pca2, columns=['PC1', 'PC2'])
+        wasserstein_dist = calculate_2d_wasserstein_distance(real_pca2, fake_pca2)
 
         # Plot the real and fake points in separate subplots
-        axs[row, column_mod % 2].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
+        axs[row, column_mod % 2].scatter(real_pca2_df['PC1'], real_pca2_df['PC2'], c=real_color, label='Real',
                                          alpha=alpha_color)
-        axs[row, column_mod % 2].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
+        axs[row, column_mod % 2].scatter(fake_pca2_df['PC1'], fake_pca2_df['PC2'], c=fake_color, label='Fake',
                                          alpha=alpha_color)
         axs[row, column_mod % 2].set_xlabel('PC1')
         axs[row, column_mod % 2].set_ylabel('PC2')
-        axs[row, column_mod % 2].set_title(f'{pop} - Real vs Fake')
+        axs[row, column_mod % 2].set_title(f'{pop} - Real vs Fake (WD: {round(wasserstein_dist, 3)})', fontsize=30)
         axs[row, column_mod % 2].legend()
         column_mod += 1
         row += 1 if column_mod % 2 == 0 else 0
-    # Get the indices of the real and fake points for this population
-    real_idx = PCs_df.index[PCs_df['Class'].str.contains('Real')]
-    fake_idx = PCs_df.index[PCs_df['Class'].str.contains('Fake')]
-    # Get the PCA values for the real and fake points
-    real_pca = PCs_df.loc[real_idx, ['PC1', 'PC2']]
-    fake_pca = PCs_df.loc[fake_idx, ['PC1', 'PC2']]
+    pca = PCA(n_components=2)
+    pca.fit(real_sequences.drop(['Type'], axis=1))
+    real_pca = pca.transform(real_sequences.drop(['Type'], axis=1))
+    fake_pca = pca.transform(generated_genomes_df.drop(['Type'], axis=1))
+    real_pca2 = real_pca[:, :2]
+    fake_pca2 = fake_pca[:, :2]
+    real_pca2_df = pd.DataFrame(real_pca2, columns=['PC1', 'PC2'])
+    fake_pca2_df = pd.DataFrame(fake_pca2, columns=['PC1', 'PC2'])
+    wasserstein_dist = calculate_2d_wasserstein_distance(real_pca, fake_pca)
     # Plot the real and fake points together in another subplot
-    axs[row, 1].scatter(real_pca['PC1'], real_pca['PC2'], c=real_color, label='Real',
+    axs[row, 1].scatter(real_pca2_df['PC1'], real_pca2_df['PC2'], c=real_color, label='Real',
                         alpha=alpha_color)
-    axs[row, 1].scatter(fake_pca['PC1'], fake_pca['PC2'], c=fake_color, label='Fake',
+    axs[row, 1].scatter(fake_pca2_df['PC1'], fake_pca2_df['PC2'], c=fake_color, label='Fake',
                         alpha=alpha_color)
     axs[row, 1].set_xlabel('PC1')
     axs[row, 1].set_ylabel('PC2')
-    axs[row, 1].set_title(f'All - Real vs Fake')
+    axs[row, 1].set_title(f'All - Real vs Fake (WD: {round(wasserstein_dist, 3)})', fontsize=25)
     axs[row, 1].legend()
     plt.tight_layout()
     plt.savefig(os.path.join(experiment_results_path, str(epoch_number) + '_pca.pdf'), format='pdf')
     plt.close()
     plt.switch_backend('agg')
+    print(f"Finished PCA experiment for {epoch_number}")
 
 
 def save_models(generator: Model, discriminator: Model, acgan: Model, experiment_results_path: str):
@@ -952,3 +988,42 @@ def save_models(generator: Model, discriminator: Model, acgan: Model, experiment
     generator.save_weights(os.path.join(experiment_results_path, "generator_weights"))
     discriminator.save(os.path.join(experiment_results_path, "discriminator"))
     discriminator.save_weights(os.path.join(experiment_results_path, "discriminator_weights"))
+
+    # Function to calculate Euclidean distance from bottom-left corner
+
+
+def euclidean_distance_from_bottom_left(point):
+    return np.sqrt(point[0] ** 2 + point[1] ** 2)
+
+
+def calculate_2d_wasserstein_distance(d1, d2):
+    # Calculate distances for d1 and d2
+    distances_d1 = np.apply_along_axis(euclidean_distance_from_bottom_left, 1, d1)
+    distances_d2 = np.apply_along_axis(euclidean_distance_from_bottom_left, 1, d2)
+
+    # Sort d1 and d2 based on distances
+    sorted_d1 = d1[np.argsort(distances_d1)]
+    sorted_d2 = d2[np.argsort(distances_d2)]
+
+    distance_matrix = cdist(sorted_d1, sorted_d2)
+
+    # Solve the linear assignment problem to find the optimal transport plan
+    row_indices, col_indices = linear_sum_assignment(distance_matrix)
+
+    # Calculate the Wasserstein distance
+    return np.sum(distance_matrix[row_indices, col_indices])
+
+
+def get_smoothing_label_batch(y):
+    random_noise = tensorflow.random.normal(tensorflow.shape(y), mean=0.01, stddev=0.001)
+    random_noise = tensorflow.where(random_noise < 0, 0, random_noise)
+    smoothing_y = tensorflow.where(y > 0, y - random_noise, y + random_noise)
+    return smoothing_y
+
+
+def add_noise_real_batch(x_batch_real):
+    x_batch_real_with_noise = tensorflow.cast(x_batch_real, tensorflow.float32)
+    random_noise = tensorflow.random.normal(tensorflow.shape(x_batch_real_with_noise), mean=0.01, stddev=0.01)
+
+    random_noise = tensorflow.clip_by_value(random_noise, 0.0, 0.3)
+    return x_batch_real_with_noise - random_noise

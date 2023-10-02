@@ -7,7 +7,7 @@ import tensorflow.python.ops.numpy_ops
 from keras.layers import BatchNormalization
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.activations import softmax
-from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout
+from tensorflow.python.keras.layers import Input, Dense, LeakyReLU, Dropout, Conv1D, Conv1DTranspose, Flatten, Reshape
 from tensorflow.python.keras.metrics import CategoricalAccuracy
 from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -79,6 +79,9 @@ def build_acgan(generator, discriminator):
     return acgan
 
 
+import tensorflow as tf
+
+
 def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent_size: int,
           generator: Model, discriminator: Model, acgan: Model, save_number: int, class_id_to_counts: dict,
           experiment_results_path: str, id_to_class: dict, real_class_names: list, sequence_results_path: str,
@@ -110,8 +113,9 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
         train_dataset = tensorflow.data.Dataset.from_tensor_slices(dataset).shuffle(
             dataset[0].shape[0]).batch(batch_size, drop_remainder=True)
         for x_batch_real, Y_batch_real in train_dataset:
-            x_batch_real_with_noise = x_batch_real - np.random.uniform(0, 0.1, size=(
-                x_batch_real.shape[0], x_batch_real.shape[1]))
+            x_batch_real_with_noise = add_noise_real_batch(x_batch_real)
+            # x_batch_real_with_noise = x_batch_real - np.random.uniform(0, 0.1, size=(
+            #     x_batch_real.shape[0], x_batch_real.shape[1]))
             latent_samples = np.random.normal(loc=0, scale=1,
                                               size=(batch_size, latent_size))  # create noise to be input to generator
             fake_labels_batch = tensorflow.one_hot(
@@ -120,21 +124,38 @@ def train(batch_size: int, epochs: int, dataset: tuple, num_classes: int, latent
 
             X_batch_fake = generator.predict_on_batch([latent_samples, fake_labels_batch])
 
-            # train discriminator, notice that noise is added to real labels
+            x_batch_train = tf.concat(
+                [tf.convert_to_tensor(X_batch_fake, dtype=tf.float32), tf.cast(x_batch_real_with_noise, tf.float32)],
+                axis=0)
+            y_valid_batch_train = tf.concat([y_fake, y_real - np.random.uniform(0, 0.1, size=(
+                y_real.shape[0], y_real.shape[1]))], axis=0)
+            y_valid_batch_train = get_smoothing_label_batch(tf.cast(y_valid_batch_train, tf.float32))
+            y_class_batch_train = tf.concat([fake_labels_batch, Y_batch_real], axis=0)
+            y_batch_true = tf.concat([y_valid_batch_train, y_class_batch_train], axis=1)
+            discriminator_batch_train_dataset = tensorflow.data.Dataset.from_tensor_slices(
+                (x_batch_train, y_batch_true)).shuffle(
+                x_batch_train.shape[0]).batch(int(batch_size), drop_remainder=True)
+            d_loss = []
             discriminator.trainable = True
-            d_loss = discriminator.train_on_batch(x_batch_real_with_noise, [y_real - np.random.uniform(0, 0.1, size=(
-                y_real.shape[0], y_real.shape[1])), Y_batch_real])
-
-            d_loss += discriminator.train_on_batch(X_batch_fake, [y_fake, fake_labels_batch])
-            d_loss = (d_loss[0] + d_loss[5]) / 2
+            for x_mini_batch, Y_mini_batch in discriminator_batch_train_dataset:
+                y_valid_mini_batch = Y_mini_batch[:, 0]
+                y_class_mini_batch = Y_mini_batch[:, 1:]
+                d_loss_mini_batch = discriminator.train_on_batch(x_mini_batch, [y_valid_mini_batch,
+                                                                                y_class_mini_batch],
+                                                                 return_dict=True)
+                d_loss.append(d_loss_mini_batch["loss"])
             discriminator.trainable = False
-            # finished training discriminator, now train generator
+            latent_samples = np.random.normal(loc=0, scale=1,
+                                              size=(batch_size, latent_size))  # create noise to be input to generator
+            fake_labels_batch = tensorflow.one_hot(
+                tensorflow.random.uniform((batch_size,), minval=0, maxval=num_classes, dtype=tensorflow.int32),
+                depth=num_classes)
             g_loss = acgan.train_on_batch([latent_samples, fake_labels_batch],
-                                          [y_real, fake_labels_batch])
-            g_loss = g_loss[0]
-            avg_d_loss.append(d_loss)
-            avg_g_loss.append(g_loss)
+                                          [get_smoothing_label_batch(tf.cast(y_real, tf.float32)), fake_labels_batch],
+                                          return_dict=True)
 
+            avg_d_loss.extend(d_loss)
+            avg_g_loss.append(g_loss["loss"])
         losses.append((np.average(avg_d_loss), np.average(avg_g_loss)))
 
         print("Epoch:\t%d/%d Discriminator loss: %6.4f Generator loss: %6.4f" % (
@@ -180,11 +201,23 @@ def polyloss_ce(y_true, y_pred, epsilon=DEFAULT_EPSILON_LCE, alpha=DEFAULT_ALPH_
     return Poly1
 
 
-def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path: str, latent_size: int, alph: float,
-         g_learn: float, d_learn: float, epochs: int, batch_size: int, class_loss_weights: float, save_number: int,
-         minimum_samples: int, target_column: str, sequence_results_path: str, d_activation: str,
-         class_loss_function: str, validation_loss_function: str, with_extra_data: bool,
-         test_discriminator_classifier: bool, required_populations: list[str]):
+def train_genome_ac_model(hapt_genotypes_path: str, extra_data_path: str, experiment_name: str,
+                          latent_size: int = DEFAULT_LATENT_SIZE, alph: float = DEFAULT_ALPH,
+                          g_learn: float = DEFAULT_GENERATOR_LEARNING_RATE,
+                          d_learn: float = DEFAULT_DISCRIMINATOR_LEARNING_RATE, epochs: int = DEFAULT_EPOCHS,
+                          batch_size: int = DEFAULT_BATCH_SIZE, class_loss_weights: float = DEFAULT_CLASS_LOSS_WEIGHTS,
+                          save_number: int = DEFAULT_SAVE_NUMBER,
+                          minimum_samples: int = DEFAULT_MINIMUM_SAMPLES, target_column: str = DEFAULT_TARGET_COLUMN,
+                          d_activation: str = DEFAULT_DISCRIMINATOR_ACTIVATION,
+                          class_loss_function: str = DEFAULT_CLASS_LOSS_FUNCTION,
+                          validation_loss_function: str = DEFAULT_VALIDATION_LOSS_FUNCTION,
+                          with_extra_data: bool = False,
+                          test_discriminator_classifier: bool = False, required_populations: list[str] = None):
+    experiment_results_path = os.path.join(DEFAULT_RESULTS_FOLDER, experiment_name)
+    sequence_results_path = os.path.join(SEQUENCE_RESULTS_PATH, experiment_name)
+    Path(experiment_results_path).mkdir(parents=True, exist_ok=True)
+    Path(sequence_results_path).mkdir(parents=True, exist_ok=True)
+
     K.clear_session()
     init_gpus()
     target_column = " ".join(target_column.split("_"))
@@ -198,7 +231,7 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                                                                          required_populations=required_populations
                                                                          )
     # save class id map
-    with open(os.path.join(experiment_results, 'class_id_map.json'), 'w') as f:
+    with open(os.path.join(experiment_results_path, 'class_id_map.json'), 'w') as f:
         json.dump(class_to_id, f)
     number_of_genotypes = dataset[0].shape[1]
     # save the reverse_dict for returning each id
@@ -236,7 +269,7 @@ def main(hapt_genotypes_path: str, extra_data_path: str, experiment_results_path
                   metrics=['accuracy'])
 
     # prepare test_dataset for classification compression
-    test_dataset = prepare_test_and_fake_dataset(experiment_results) if test_discriminator_classifier else None
+    test_dataset = prepare_test_and_fake_dataset(experiment_results_path) if test_discriminator_classifier else None
 
     train(batch_size=batch_size, epochs=epochs, dataset=dataset, num_classes=num_classes,
           latent_size=latent_size, generator=generator, discriminator=discriminator, acgan=acgan,
@@ -287,32 +320,27 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    experiment_results = os.path.join(DEFAULT_RESULTS_FOLDER, args.experiment_name)
-    sequence_results = os.path.join(SEQUENCE_RESULTS_PATH, args.experiment_name)
-    Path(experiment_results).mkdir(parents=True, exist_ok=True)
-    Path(sequence_results).mkdir(parents=True, exist_ok=True)
-
+    experiment_results_path = os.path.join(DEFAULT_RESULTS_FOLDER, args.experiment_name)
     # save the args as a JSON file
-    with open(os.path.join(experiment_results, 'experiment_args.json'), 'w') as f:
+    with open(os.path.join(experiment_results_path, 'experiment_args.json'), 'w') as f:
         json.dump(vars(args), f)
-
-    main(hapt_genotypes_path=args.hapt_genotypes_path,
-         extra_data_path=args.extra_data_path,
-         experiment_results_path=experiment_results,
-         latent_size=args.latent_size,
-         alph=args.alph,
-         g_learn=args.g_learn,
-         d_learn=args.d_learn,
-         epochs=args.epochs,
-         batch_size=args.batch_size,
-         class_loss_weights=args.class_loss_weights,
-         save_number=args.save_number,
-         minimum_samples=args.minimum_samples,
-         target_column=args.target_column,
-         sequence_results_path=sequence_results,
-         d_activation=args.d_activation,
-         class_loss_function=args.class_loss_function,
-         validation_loss_function=args.validation_loss_function,
-         with_extra_data=args.with_extra_data,
-         test_discriminator_classifier=args.test_discriminator_classifier,
-         required_populations=args.required_populations)
+    Path(experiment_results_path).mkdir(parents=True, exist_ok=True)
+    train_genome_ac_model(hapt_genotypes_path=args.hapt_genotypes_path,
+                          extra_data_path=args.extra_data_path,
+                          experiment_name=args.experiment_name,
+                          latent_size=args.latent_size,
+                          alph=args.alph,
+                          g_learn=args.g_learn,
+                          d_learn=args.d_learn,
+                          epochs=args.epochs,
+                          batch_size=args.batch_size,
+                          class_loss_weights=args.class_loss_weights,
+                          save_number=args.save_number,
+                          minimum_samples=args.minimum_samples,
+                          target_column=args.target_column,
+                          d_activation=args.d_activation,
+                          class_loss_function=args.class_loss_function,
+                          validation_loss_function=args.validation_loss_function,
+                          with_extra_data=args.with_extra_data,
+                          test_discriminator_classifier=args.test_discriminator_classifier,
+                          required_populations=args.required_populations)
