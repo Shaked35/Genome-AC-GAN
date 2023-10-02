@@ -1,24 +1,30 @@
-# Variables
-VENV_NAME := .venv
-VENV_ACTIVATE := $(VENV_NAME)/bin/activate
-REQUIREMENTS := requirements.txt
+# Set the Python interpreter
+PYTHON = python3
 
-.PHONY: venv install
+# Virtual environment directory
+VENV_DIR = venv
+# Path to requirements file
+REQUIREMENTS_FILE = requirements.txt
 
-# Create a virtual environment if it doesn't exist
+# Create a virtual environment
 venv:
-	@echo "Creating virtual environment..."
-	@test -d $(VENV_NAME) || python3 -m venv $(VENV_NAME)
+	$(PYTHON) -m venv $(VENV_DIR)
 
 # Activate the virtual environment
 activate:
 	@echo "Activating virtual environment..."
-	@test -f $(VENV_ACTIVATE) && source $(VENV_ACTIVATE)
+	@. $(VENV_DIR)/bin/activate
 
-# Install dependencies using pip
+# Install requirements using pip
 install:
-	@echo "Installing dependencies..."
-	@test -f $(REQUIREMENTS) && $(VENV_NAME)/bin/pip install -r $(REQUIREMENTS)
+	$(PYTHON) -m pip install -r $(REQUIREMENTS_FILE)
+	$(PYTHON) pip install tensorflow==2.7.0
 
-# Run all steps: create virtual environment, activate it, and install dependencies
+# Clean up
+clean:
+	rm -rf $(VENV_DIR)
+
+# Set up the virtual environment and install requirements
 setup: venv activate install
+
+.PHONY: venv activate install clean setup

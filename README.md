@@ -89,7 +89,7 @@ free to open an issue or submit a pull request.
 
 ### PCA Compression
 
-![pca2_on_test_real.jpg](assets%2FPca2_on_test_real.jpg)
+![pca2_on_test_real.jpg](assets%2Fpca2_on_test_real.jpg)
 
 ### PCA Of Continental Population Training
 
@@ -108,7 +108,7 @@ training the old model in the artificial_genomes repository.
 
 - [old_model_training.py](old_model_training.py): train old model based
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
-- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with arguments:
+- [genome_ac_gan_training.py](genome_ac_gan_training.py) or [train_with_configuration.py](train_with_configuration.py): train new types of models with arguments:
   1. `hapt_genotypes_path`: HapT genotypes data used in the training process. It is located in the resource directory.
      default: `utils.consts.REAL_10K_SNP_1000G_PATH`
   2. `experiment_name`: name of the experiment which will be the output folder name
