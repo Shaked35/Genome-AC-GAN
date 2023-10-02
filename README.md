@@ -85,11 +85,11 @@ free to open an issue or submit a pull request.
 
 ### Genome-AC-GAN Architecture
 
-![GSACGANdrawio.png](assets/GS-AC-GAN.drawio.png)
+![GENOMEACGAN.png](assets/GENOME-AC-GAN.png)
 
 ### PCA Compression
 
-![pca2_on_test_real.jpg](assets%2Fpca2_on_test_real.jpg)
+![pca2_on_test_real.jpg](assets%2FPca2_on_test_real.jpg)
 
 ### PCA Of Continental Population Training
 
@@ -97,7 +97,8 @@ free to open an issue or submit a pull request.
 
 ### Classifier Models Improvements With Synthetic Augmentations
 
-![clusiffiers_with_synthetic_compare.jpg](assets%2Fclusiffiers_with_synthetic_compare.jpg)
+![classifier_with_synthetic_compare_by_model.jpg](assets%2Fclassifier_with_synthetic_compare_by_model.jpg)
+![classifier_with_synthetic_by_pop.jpg](assets%2Fclassifier_with_synthetic_by_pop.jpg)
 
 ### Training Models
 
