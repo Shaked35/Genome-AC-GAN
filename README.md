@@ -25,7 +25,7 @@ Clone the repository to your local machine:
 Copy code
 `git clone https://github.com/Shaked35/cGenome-AC-GAN`
 
-create venv with python 3.9 and install [requirements.txt](assets/requirements.txt)
+create venv with python 3.9 and install [requirements.txt](requirements.txt)
 you can run make setup or make install from the terminal inside the project to prepare your python virtual environment.
 
 Usage
@@ -35,8 +35,8 @@ general steps to follow:
 *Prepare your dataset*: the dataset should be ready in the resource directory.
 before each training you'll do the preprocessing step.
 
-*Train the model*: Use the provided training script [train_with_configuration.py](train_with_configuration.py) to train 
-the Genome-AC-GAN model based on yaml configuration. you can use one of the existing 
+*Train the model*: Use the provided training script [train_with_configuration.py](train_with_configuration.py) to train
+the Genome-AC-GAN model based on yaml configuration. you can use one of the existing
 configurations [configurations](configurations) that used in our paper.
 if you want to train your own model, create a new yaml configuration based on the [arguments_description.yaml](configurations%2Farguments_description.yaml) and run the same script with --path <your_configuration_path.yaml>
 
@@ -104,7 +104,6 @@ free to open an issue or submit a pull request.
 
 ### Training Models
 
-
 In addition to the Genome-AC-GAN model, this repository also provides an implementation of the model described in the
 article "Creating Artificial Human Genomes Using Generative Models." You can find the details and instructions for
 training the old model in the artificial_genomes repository.
@@ -113,4 +112,3 @@ training the old model in the artificial_genomes repository.
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
 - [train_with_configuration.py](train_with_configuration.py): training Genome-AC-GAN model based on input --path config
 - [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with cli arguments
-
