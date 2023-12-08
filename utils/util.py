@@ -809,7 +809,7 @@ def save_discriminator_class_pred(discriminator, test_dataset, experiment_result
         class_classifier_results["class_name_real"] = class_classifier_results["class_real"].replace(id_to_class)
         class_classifier_results["class_name_pred"] = class_classifier_results["class_pred"].replace(id_to_class)
         class_classifier_results.to_csv(
-            os.path.join(experiment_results_path, "discriminator_pred_on_test.csv"), index=False)
+            os.path.join(experiment_results_path, "categorical_crossentropy_03.csv"), index=False)
         class_names = list(set(id_to_class.values()))
         plot_confusion_matrix(class_classifier_results["class_real"],
                               class_classifier_results["class_pred"], class_names,
