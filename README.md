@@ -1,4 +1,4 @@
-# Genome-AC-GAN: Genotype With Auxiliary Classifier GANs
+# Genome-AC-GAN: Enhancing Synthetic Genotype Generation through Auxiliary Classification
 
 This Git repository contains an implementation of the article titled "Genome-AC-GAN: Enhancing Synthetic Genotype Generation through Auxiliary Classification" The repository provides tools and code to train the Genome-AC-GAN model with various configurations and conduct
 evaluations and comparisons with other models.
