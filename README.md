@@ -36,7 +36,7 @@ before each training you'll do the preprocessing step.
 
 *Train the model*: Use the provided training script [train_with_configuration.py](train_with_configuration.py) to train
 the Genome-AC-GAN model based on yaml configuration. you can use one of the existing
-configurations [configurations](configurations) that used in our paper.
+[configurations](configurations) that used in our paper.
 if you want to train your own model, create a new yaml configuration based on the [arguments_description.yaml](configurations%2Farguments_description.yaml) and run the same script with --path <your_configuration_path.yaml>
 
 you can follow the steps below and training the new model or the old model. you also can find the input arguments that will affect the final model.
