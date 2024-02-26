@@ -1,6 +1,6 @@
 # Genome-AC-GAN: Enhancing Synthetic Genotype Generation through Auxiliary Classification
 
-This Git repository contains an implementation of the article titled "Genome-AC-GAN: Enhancing Synthetic Genotype Generation through Auxiliary Classification" The repository provides tools and code to train the Genome-AC-GAN model with various configurations and conduct
+This Git repository contains an implementation of the article titled ["Genome-AC-GAN: Enhancing Synthetic Genotype Generation through Auxiliary Classification"](https://www.biorxiv.org/content/10.1101/2024.02.14.580420v1.full.pdf+html) The repository provides tools and code to train the Genome-AC-GAN model with various configurations and conduct
 evaluations and comparisons with other models.
 
 The Genome-AC-GAN is a model introduced in the article, which focuses on generating artificial human genomes using
@@ -10,7 +10,7 @@ the model with different configurations and conduct various evaluations.
 Preview models and some compression analysis functions based on the project:
 https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/tree/master/GAN_AGs
 
-This repository implement the articles:
+This repository implements the following articles:
 
 "Deep convolutional and conditional neural networks for large-scale genomic data generation"
 
@@ -25,26 +25,26 @@ Copy code
 `git clone https://github.com/Shaked35/cGenome-AC-GAN`
 
 create venv with python 3.9 and install [requirements.txt](requirements.txt)
-you can run make setup or make install from the terminal inside the project to prepare your python virtual environment.
+you can run a setup or make an install from the terminal inside the project to prepare your python virtual environment.
 
 Usage
 Once you have completed the installation process, you can start using the Genome-AC-GAN implementation. Here are the
 general steps to follow:
 
 *Prepare your dataset*: the dataset should be ready in the resource directory.
-before each training you'll do the preprocessing step.
+before each training, you'll do the preprocessing step.
 
 *Train the model*: Use the provided training script [train_with_configuration.py](train_with_configuration.py) to train
 the Genome-AC-GAN model based on yaml configuration. you can use one of the existing
-[configurations](configurations) that used in our paper.
+[configurations](configurations) that are used in our paper.
 if you want to train your own model, create a new yaml configuration based on the [arguments_description.yaml](configurations%2Farguments_description.yaml) and run the same script with --path <your_configuration_path.yaml>
 
-you can follow the steps below and training the new model or the old model. you also can find the input arguments that will affect the final model.
+you can follow the steps below and train the new model or the old model. you also can find the input arguments that will affect the final model.
 
 *Perform evaluations*: After training the model, you can conduct various evaluations to assess its performance. This may
 include evaluating metrics such as sequence similarity, diversity, or other domain-specific measurements.
 
-you can find different evaluations below in different jupyther notebooks.
+you can find different evaluations below in different Jupiter notebooks.
 
 ### Synthetic Genotypes Sequences (Output Models Results)
 
@@ -110,4 +110,4 @@ training the old model in the artificial_genomes repository.
 - [old_model_training.py](old_model_training.py): train old model based
   on https://gitlab.inria.fr/ml_genetics/public/artificial_genomes/-/blob/master/GAN_prev/gan_script5.py
 - [train_with_configuration.py](train_with_configuration.py): training Genome-AC-GAN model based on input --path config
-- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with cli arguments
+- [genome_ac_gan_training.py](genome_ac_gan_training.py): train new types of models with CLI arguments
